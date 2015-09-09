@@ -371,7 +371,7 @@ exit1:
 			case udpMsg := <- s.writeChan:
 				fmt.Println("begin sendMsg")
 				n, err := s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
-				fmt.Println("sendMsg ", n, err)
+				fmt.Println("sendMsg ", n, err, udpMsg.destAddr)
 
 			case <- s.writtingLoopCloseChan:
 				fmt.Println("close")
