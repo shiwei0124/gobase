@@ -384,6 +384,7 @@ func (s * BaseUDPStream) WriteToUDP(data []byte, addr * net.UDPAddr) {
 }
 
 func (s * BaseUDPStream) WriteTo(data []byte, addr net.Addr) {
+	fmt.Println("baseudpstrem write to")
 	udpMsg := &UDPMsg {
 		data : data,
 		destAddr : addr,
