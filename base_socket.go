@@ -2,6 +2,7 @@
 package gobase
 
 import (
+	"fmt"
 	"errors"
 	"strings"
 	//"fmt"
@@ -367,7 +368,9 @@ exit1:
 	for {
 		select {
 			case udpMsg := <- s.writeChan:
-				s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
+				n, err := s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
+				fmt.Println("sendMsg ", n, err)
+
 			case <- s.writtingLoopCloseChan:
 				//log.Trace("session writting chan stoped")
 				break exit1
