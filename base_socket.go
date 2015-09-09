@@ -292,10 +292,17 @@ type IBaseUDPStreamHandle interface {
 
 }
 
+type UDPMsg struct {
+	data []byte
+	destAddr net.Addr
+}
+
 type BaseUDPStream struct {
 	*net.UDPConn
 	IBaseUDPStreamHandle
 	closed bool
+	writeChan	chan * UDPMsg
+	writtingLoopCloseChan	chan bool
 }
 
 func (s * BaseUDPStream) StartByAddr(addr string) (error) {
@@ -328,7 +335,12 @@ func (s * BaseUDPStream) Start(ip string, port int32) (err error) {
 	if s.IBaseUDPStreamHandle != nil {
 		s.IBaseUDPStreamHandle.OnStart()
 	}
+	
+	s.writeChan = make(chan *UDPMsg, 1000)
+	s.writtingLoopCloseChan = make(chan bool, 1)
+
 	go s.readLoop()
+	go s.writeLoop()
 end:
 	return
 }
@@ -349,10 +361,40 @@ func (s * BaseUDPStream) readLoop() {
 	}
 }
 
+//udp的底层write有锁
+func (s * BaseUDPStream) writeLoop() {
+exit1: 
+	for {
+		select {
+			case udpMsg := <- s.writeChan:
+				s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
+			case <- s.writtingLoopCloseChan:
+				//log.Trace("session writting chan stoped")
+				break exit1
+		}
+	}
+	//log.Trace("writting loop stopped..")
+}
+
+func (s * BaseUDPStream) WriteToUDP(data []byte, addr * net.UDPAddr) {
+	s.WriteTo(data, addr)
+}
+
+func (s * BaseUDPStream) WriteTo(data []byte, addr net.Addr) {
+	udpMsg := &UDPMsg {
+		data : data,
+		destAddr : addr,
+	}
+	s.writeChan <- udpMsg
+}
+
+
 func (s * BaseUDPStream) Close() {
 	if s.closed != true {
 		s.UDPConn.Close()
 		s.closed = true
+		s.writtingLoopCloseChan <- true
+
 		if s.IBaseUDPStreamHandle != nil {
 			s.IBaseUDPStreamHandle.OnClose()
 		}
