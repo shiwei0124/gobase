@@ -366,15 +366,11 @@ func (s * BaseUDPStream) readLoop() {
 func (s * BaseUDPStream) writeLoop() {
 exit1: 
 	for {
-		fmt.Println("begin writeloop")
 		select {
 			case udpMsg := <- s.writeChan:
-				fmt.Println("begin sendMsg")
-				n, err := s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
-				fmt.Println("sendMsg ", n, err, udpMsg.destAddr)
+				s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
 
 			case <- s.writtingLoopCloseChan:
-				fmt.Println("close")
 				//log.Trace("session writting chan stoped")
 				break exit1
 		}
@@ -387,7 +383,6 @@ func (s * BaseUDPStream) WriteToUDP(data []byte, addr * net.UDPAddr) {
 }
 
 func (s * BaseUDPStream) WriteTo(data []byte, addr net.Addr) {
-	fmt.Println("baseudpstrem write to")
 	udpMsg := &UDPMsg {
 		data : data,
 		destAddr : addr,
