@@ -2,7 +2,6 @@
 package gobase
 
 import (
-	"fmt"
 	"errors"
 	"strings"
 	//"fmt"
