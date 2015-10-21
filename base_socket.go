@@ -146,6 +146,9 @@ exit1:
 		select {
 			case data := <- c.writeChan:
 				c.write(data)
+				if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
+					c.writeEmptyChan <- true
+				}
 			case <- c.checkEmptyChan:
 				if len(c.writeChan) == 0 {
 					c.writeEmptyChan <- true
