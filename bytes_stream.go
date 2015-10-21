@@ -58,3 +58,28 @@ func (s * BytesStream) ReadBytes(length int) []byte {
 	s.pos += length
 	return res
 }
+
+func (s *BytesStream) WriteByte(data byte) {
+	
+}
+
+func (s *BytesStream) WriteUint16(data uint16) {
+	
+}
+
+func (s *BytesStream) WriteUint32(data uint32) {
+	
+}
+
+func (s *BytesStream) WriteUint64(data uint64) {
+	
+}
+
+func (s *BytesStream) WriteString(data string) {
+	
+}
+
+func (s *BytesStream) WriteBytes(data []byte) {
+	
+}
+

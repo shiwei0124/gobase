@@ -74,6 +74,8 @@ type BaseTCPStream struct {
 	writer		*bufio.Writer
 	writeChan	chan []byte
 	writtingLoopCloseChan	chan bool
+	writeEmptyChan chan bool
+	checkEmptyChan chan bool
 	closed		bool
 	IBaseTCPStreamHandle
 }
@@ -111,6 +113,14 @@ func (c * BaseTCPStream) WriteString(data string) {
 	}
 }
 
+func (c * BaseTCPStream) Flush() {
+	c.writeEmptyChan = make(chan bool, 1000)
+	c.checkEmptyChan <- true
+	<- c.writeEmptyChan
+	close(c.writeEmptyChan)
+	c.writeEmptyChan = nil
+}
+
 func (c* BaseTCPStream) readLoop() {
 	p := make([]byte, 1024)
 	for {
@@ -136,6 +146,10 @@ exit1:
 		select {
 			case data := <- c.writeChan:
 				c.write(data)
+			case <- c.checkEmptyChan:
+				if len(c.writeChan) == 0 {
+					c.writeEmptyChan <- true
+				}
 			case <- c.writtingLoopCloseChan:
 				//log.Trace("session writting chan stoped")
 				break exit1
@@ -162,6 +176,7 @@ func (c * BaseTCPStream) start() {
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
+	c.checkEmptyChan = make(chan bool, 1)
 	c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
