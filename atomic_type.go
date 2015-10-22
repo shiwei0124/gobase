@@ -112,4 +112,3 @@ func (s *AtomicString) CompareAndSwap(oldval, newval string) (swqpped bool) {
 	}
 	return false
 }
-

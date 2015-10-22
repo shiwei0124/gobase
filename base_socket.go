@@ -5,21 +5,19 @@ import (
 	"errors"
 	"strings"
 	//"fmt"
-	"net"
-	"time"
 	"bufio"
+	"net"
 	"strconv"
-
+	"time"
 )
 
 type IBaseIOStream interface {
-	Close()	
+	Close()
 }
 
 type IBaseStreamHandle interface {
 	OnClose()
 	OnException(err error)
-
 }
 
 type IBaseTCPStreamHandle interface {
@@ -48,35 +46,35 @@ type BaseTCPClientHandle struct {
 	BaseIOStreamHandle
 }
 
-func (h * BaseIOStreamHandle)OnRead(data []byte) {
-	//log.Trace("BaseIOStreamHandle onRead")	
+func (h *BaseIOStreamHandle) OnRead(data []byte) {
+	//log.Trace("BaseIOStreamHandle onRead")
 }
 
-func (h * BaseIOStreamHandle)OnClose() {
+func (h *BaseIOStreamHandle) OnClose() {
 	//log.Trace("BaseIOStreamHandle onClose")
 }
 
-func (h * BaseIOStreamHandle)OnException(err error) {
+func (h *BaseIOStreamHandle) OnException(err error) {
 	//log.Trace("BaseIOStreamHandle onException, err: ", err)
 }
 
-func (h * BaseTCPSessionHandle)OnStart() {
+func (h *BaseTCPSessionHandle) OnStart() {
 	//log.Trace("BaseTCPSessionHandle onStart")
 }
 
-func (h * BaseTCPClientHandle)OnConnect(bConnected bool) {
+func (h *BaseTCPClientHandle) OnConnect(bConnected bool) {
 	//log.Trace("BaseTCPClientHandle onConnect")
 }
 
 type BaseTCPStream struct {
 	net.Conn
-	reader		*bufio.Reader
-	writer		*bufio.Writer
-	writeChan	chan []byte
-	writtingLoopCloseChan	chan bool
-	writeEmptyChan chan bool
-	checkEmptyChan chan bool
-	closed		bool
+	reader                *bufio.Reader
+	writer                *bufio.Writer
+	writeChan             chan []byte
+	writtingLoopCloseChan chan bool
+	writeEmptyChan        chan bool
+	checkEmptyChan        chan bool
+	closed                bool
 	IBaseTCPStreamHandle
 }
 
@@ -89,7 +87,7 @@ type BaseTCPClient struct {
 	RemoteAddress string
 }
 
-func (c * BaseTCPStream) Close() {
+func (c *BaseTCPStream) Close() {
 	if c.closed != true {
 		c.Conn.Close()
 		c.closed = true
@@ -100,71 +98,71 @@ func (c * BaseTCPStream) Close() {
 	}
 }
 
-func (c * BaseTCPStream) Write(data []byte) {
+func (c *BaseTCPStream) Write(data []byte) {
 	if c.closed != true {
 		c.writeChan <- data
 	}
 }
 
-func (c * BaseTCPStream) WriteString(data string) {
+func (c *BaseTCPStream) WriteString(data string) {
 	if c.closed != true {
 		dataBytes := []byte(data)
 		c.Write(dataBytes)
 	}
 }
 
-func (c * BaseTCPStream) Flush() {
+func (c *BaseTCPStream) Flush() {
 	c.writeEmptyChan = make(chan bool, 1000)
 	c.checkEmptyChan <- true
-	<- c.writeEmptyChan
+	<-c.writeEmptyChan
 	close(c.writeEmptyChan)
 	c.writeEmptyChan = nil
 }
 
-func (c* BaseTCPStream) readLoop() {
+func (c *BaseTCPStream) readLoop() {
 	p := make([]byte, 1024)
 	for {
 		n, err := c.reader.Read(p)
 		if err != nil {
-			if c.IBaseTCPStreamHandle != nil{
+			if c.IBaseTCPStreamHandle != nil {
 				c.IBaseTCPStreamHandle.OnException(err)
 			}
 			break
 		} else {
 			//log.Critical("read bytes num: %d", n)
 		}
-		if c.IBaseTCPStreamHandle != nil{
+		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnRead(p[:n])
 		}
 		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	}
 }
 
-func (c* BaseTCPStream) writeLoop() {
+func (c *BaseTCPStream) writeLoop() {
 exit1:
 	for {
 		select {
-			case data := <- c.writeChan:
-				c.write(data)
-				if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
-					c.writeEmptyChan <- true
-				}
-			case <- c.checkEmptyChan:
-				if len(c.writeChan) == 0 {
-					c.writeEmptyChan <- true
-				}
-			case <- c.writtingLoopCloseChan:
-				//log.Trace("session writting chan stoped")
-				break exit1
+		case data := <-c.writeChan:
+			c.write(data)
+			if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
+				c.writeEmptyChan <- true
+			}
+		case <-c.checkEmptyChan:
+			if len(c.writeChan) == 0 {
+				c.writeEmptyChan <- true
+			}
+		case <-c.writtingLoopCloseChan:
+			//log.Trace("session writting chan stoped")
+			break exit1
 		}
 	}
 	//log.Trace("writting loop stopped..")
 }
 
-func (c* BaseTCPStream) write(data []byte) {
+func (c *BaseTCPStream) write(data []byte) {
 	//c.Conn.Write(data)
 	if _, err := c.writer.Write(data); err != nil {
-		if c.IBaseTCPStreamHandle != nil{
+		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnException(err)
 		}
 	} else {
@@ -173,9 +171,9 @@ func (c* BaseTCPStream) write(data []byte) {
 	}
 }
 
-func (c * BaseTCPStream) start() {
-	c.reader = bufio.NewReaderSize(c.Conn, 32 * 1024)
-	c.writer = bufio.NewWriterSize(c.Conn, 32 * 1024)
+func (c *BaseTCPStream) start() {
+	c.reader = bufio.NewReaderSize(c.Conn, 32*1024)
+	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
@@ -187,7 +185,7 @@ func (c * BaseTCPStream) start() {
 }
 
 /// TCP Session
-func (c * BaseTCPSession) Start(){
+func (c *BaseTCPSession) Start() {
 	c.start()
 	if _, ok := c.IBaseTCPStreamHandle.(IBaseTCPSessionHandle); ok {
 		c.IBaseTCPStreamHandle.(IBaseTCPSessionHandle).OnStart()
@@ -196,13 +194,13 @@ func (c * BaseTCPSession) Start(){
 
 /// TCP Client
 //阻塞得到结果
-func (c * BaseTCPClient) Connect(ip string, port int32) error {
+func (c *BaseTCPClient) Connect(ip string, port int32) error {
 	addr := ip + ":" + strconv.FormatInt(int64(port), 10)
 	return c.ConnectByAddr(addr)
 }
 
 //addr: "127.0.0.1:80"
-func (c * BaseTCPClient) ConnectByAddr(addr string) error {
+func (c *BaseTCPClient) ConnectByAddr(addr string) error {
 	c.closed = true
 	c.RemoteAddress = addr
 	//阻塞
@@ -213,7 +211,7 @@ func (c * BaseTCPClient) ConnectByAddr(addr string) error {
 		return err
 	}
 	c.Conn = conn
-	
+
 	if _, ok := c.IBaseTCPStreamHandle.(IBaseTCPClientHandle); ok {
 		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(true)
 	}
@@ -231,33 +229,32 @@ type IBaseTCPServerHandle interface {
 type BaseTCPServerHandle struct {
 }
 
-func (h * BaseTCPServerHandle) OnStart() {
+func (h *BaseTCPServerHandle) OnStart() {
 	//log.Trace("BaseTCPServerHandle onStart")
 }
 
-func (h * BaseTCPServerHandle) OnAccept(c net.Conn) {
+func (h *BaseTCPServerHandle) OnAccept(c net.Conn) {
 	//log.Trace("BaseTCPServerHandle onAccept")
 }
 
-func (h * BaseTCPServerHandle) OnClose() {
+func (h *BaseTCPServerHandle) OnClose() {
 	//log.Trace("BaseTCPServerHandle onClose")
 }
 
-func (h * BaseTCPServerHandle) OnException(err error) {
-	//log.Trace("BaseTCPServerHandle onException, err: %s", err.Error())	
+func (h *BaseTCPServerHandle) OnException(err error) {
+	//log.Trace("BaseTCPServerHandle onException, err: %s", err.Error())
 }
 
 type BaseTCPServer struct {
 	net.Listener
-	closed		bool	
+	closed bool
 	IBaseTCPServerHandle
 }
 
-
-func (s * BaseTCPServer) StartByAddr(addr string) (err error ){
-	s.Listener, err = net.Listen("tcp", addr)	
+func (s *BaseTCPServer) StartByAddr(addr string) (err error) {
+	s.Listener, err = net.Listen("tcp", addr)
 	if err != nil {
-		//log.Error("server bind %s failed, err: %s", addr, err.Error())	
+		//log.Error("server bind %s failed, err: %s", addr, err.Error())
 		goto end
 	} else {
 		//log.Info("server bind %s successed.", addr)
@@ -270,12 +267,12 @@ func (s * BaseTCPServer) StartByAddr(addr string) (err error ){
 end:
 	return
 }
-func (s * BaseTCPServer) Start(ip string, port int32)  error {
+func (s *BaseTCPServer) Start(ip string, port int32) error {
 	addr := ip + ":" + strconv.FormatInt(int64(port), 10)
 	return s.StartByAddr(addr)
 }
 
-func (s * BaseTCPServer) acceptLoop() {
+func (s *BaseTCPServer) acceptLoop() {
 	for {
 		conn, err := s.Listener.Accept()
 		if err != nil {
@@ -288,10 +285,10 @@ func (s * BaseTCPServer) acceptLoop() {
 			s.IBaseTCPServerHandle.OnAccept(conn)
 		}
 	}
-	return 
+	return
 }
 
-func (s * BaseTCPServer) Close() {
+func (s *BaseTCPServer) Close() {
 	if s.closed != true {
 		s.Listener.Close()
 		s.closed = true
@@ -307,25 +304,24 @@ type IBaseUDPStreamHandle interface {
 	IBaseStreamHandle
 	OnStart()
 	OnRead(data []byte, addr *net.UDPAddr)
-
 }
 
 type UDPMsg struct {
-	data []byte
+	data     []byte
 	destAddr net.Addr
 }
 
 type BaseUDPStream struct {
 	*net.UDPConn
 	IBaseUDPStreamHandle
-	closed bool
-	writeChan	chan * UDPMsg
-	writtingLoopCloseChan	chan bool
-	writeEmptyChan chan bool
-	checkEmptyChan chan bool
+	closed                bool
+	writeChan             chan *UDPMsg
+	writtingLoopCloseChan chan bool
+	writeEmptyChan        chan bool
+	checkEmptyChan        chan bool
 }
 
-func (s * BaseUDPStream) StartByAddr(addr string) (error) {
+func (s *BaseUDPStream) StartByAddr(addr string) error {
 	if addrList := strings.Split(addr, ":"); len(addrList) != 2 {
 		return errors.New("err addr format")
 	} else {
@@ -337,17 +333,17 @@ func (s * BaseUDPStream) StartByAddr(addr string) (error) {
 			return s.Start(strIP, int32(port))
 		}
 	}
-	
+
 }
 
-func (s * BaseUDPStream) Start(ip string, port int32) (err error) {
+func (s *BaseUDPStream) Start(ip string, port int32) (err error) {
 	udpAddr := &net.UDPAddr{
 		IP:   net.ParseIP(ip),
 		Port: int(port),
 	}
-	s.UDPConn, err = net.ListenUDP("udp4", udpAddr) 	
+	s.UDPConn, err = net.ListenUDP("udp4", udpAddr)
 	if err != nil {
-		//log.Error("server bind %s:%d failed, err: %v", ip, port, err)	
+		//log.Error("server bind %s:%d failed, err: %v", ip, port, err)
 		goto end
 	} else {
 		//log.Infof("server bind %s:%d successed.", ip, port)
@@ -355,7 +351,7 @@ func (s * BaseUDPStream) Start(ip string, port int32) (err error) {
 	if s.IBaseUDPStreamHandle != nil {
 		s.IBaseUDPStreamHandle.OnStart()
 	}
-	
+
 	s.writeChan = make(chan *UDPMsg, 1000)
 	s.writtingLoopCloseChan = make(chan bool, 1)
 	s.checkEmptyChan = make(chan bool, 1)
@@ -365,65 +361,65 @@ end:
 	return
 }
 
-func (s * BaseUDPStream) readLoop() {
+func (s *BaseUDPStream) readLoop() {
 	for {
 		p := make([]byte, 1024)
 		n, addr, err := s.UDPConn.ReadFromUDP(p)
 		if err != nil {
-			if s.IBaseUDPStreamHandle != nil{
+			if s.IBaseUDPStreamHandle != nil {
 				s.IBaseUDPStreamHandle.OnException(err)
 			}
 			break
 		}
-		if s.IBaseUDPStreamHandle != nil{
+		if s.IBaseUDPStreamHandle != nil {
 			s.IBaseUDPStreamHandle.OnRead(p[:n], addr)
 		}
 	}
 }
 
 //udp的底层write有锁
-func (s * BaseUDPStream) writeLoop() {
-exit1: 
+func (s *BaseUDPStream) writeLoop() {
+exit1:
 	for {
 		select {
-			case udpMsg := <- s.writeChan:
-				s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
-				if len(s.writeChan) == 0 && s.writeEmptyChan != nil {
-					s.writeEmptyChan <- true
-				}
-			case <- s.checkEmptyChan:
-				if len(s.writeChan) == 0 {
-					s.writeEmptyChan <- true
-				}
-			case <- s.writtingLoopCloseChan:
-				//log.Trace("session writting chan stoped")
-				break exit1
+		case udpMsg := <-s.writeChan:
+			s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
+			if len(s.writeChan) == 0 && s.writeEmptyChan != nil {
+				s.writeEmptyChan <- true
+			}
+		case <-s.checkEmptyChan:
+			if len(s.writeChan) == 0 {
+				s.writeEmptyChan <- true
+			}
+		case <-s.writtingLoopCloseChan:
+			//log.Trace("session writting chan stoped")
+			break exit1
 		}
 	}
 	//log.Trace("writting loop stopped..")
 }
 
-func (s * BaseUDPStream) WriteToUDP(data []byte, addr * net.UDPAddr) {
+func (s *BaseUDPStream) WriteToUDP(data []byte, addr *net.UDPAddr) {
 	s.WriteTo(data, addr)
 }
 
-func (s * BaseUDPStream) WriteTo(data []byte, addr net.Addr) {
-	udpMsg := &UDPMsg {
-		data : data,
-		destAddr : addr,
+func (s *BaseUDPStream) WriteTo(data []byte, addr net.Addr) {
+	udpMsg := &UDPMsg{
+		data:     data,
+		destAddr: addr,
 	}
 	s.writeChan <- udpMsg
 }
 
-func (s * BaseUDPStream) Flush() {
+func (s *BaseUDPStream) Flush() {
 	s.writeEmptyChan = make(chan bool, 1000)
 	s.checkEmptyChan <- true
-	<- s.writeEmptyChan
+	<-s.writeEmptyChan
 	close(s.writeEmptyChan)
 	s.writeEmptyChan = nil
 }
 
-func (s * BaseUDPStream) Close() {
+func (s *BaseUDPStream) Close() {
 	if s.closed != true {
 		s.UDPConn.Close()
 		s.closed = true
@@ -435,34 +431,31 @@ func (s * BaseUDPStream) Close() {
 	}
 }
 
-
-
 ///  UDP Client
 type IBaseUDPClientHandle interface {
 	IBaseUDPStreamHandle
 }
 
 type BaseUDPClientHandle struct {
-	
 }
 
-func (h * BaseUDPClientHandle) OnStart() {
+func (h *BaseUDPClientHandle) OnStart() {
 	//log.Trace("BaseUDPClientHandle onStart")
 }
 
-func (h * BaseUDPClientHandle) OnException(err error) {
+func (h *BaseUDPClientHandle) OnException(err error) {
 	//log.Trace("BaseUDPClientHandle onException, err: %s", err.Error())
 }
 
-func (h * BaseUDPClientHandle) OnClose() {
-	//log.Trace("BaseUDPClientHandle onClose")	
+func (h *BaseUDPClientHandle) OnClose() {
+	//log.Trace("BaseUDPClientHandle onClose")
 }
 
 type BaseUDPClient struct {
 	BaseUDPStream
 }
 
-///   UDP Server 
+///   UDP Server
 type IBaseUDPServerHandle interface {
 	IBaseUDPStreamHandle
 }
@@ -470,18 +463,17 @@ type IBaseUDPServerHandle interface {
 type BaseUDPServerHandle struct {
 }
 
-func (h * BaseUDPServerHandle) OnStart() {
+func (h *BaseUDPServerHandle) OnStart() {
 	//log.Trace("BaseUDPServerHandle onStart")
 }
 
-func (h * BaseUDPServerHandle) OnException(err error) {
+func (h *BaseUDPServerHandle) OnException(err error) {
 	//log.Trace("BaseUDPServerHandle onException, err: %s", err.Error() )
 }
 
-func (h * BaseUDPServerHandle) OnClose() {
-	//log.Trace("BaseUDPServerHandle onClose")	
+func (h *BaseUDPServerHandle) OnClose() {
+	//log.Trace("BaseUDPServerHandle onClose")
 }
-
 
 type BaseUDPServer struct {
 	BaseUDPStream
