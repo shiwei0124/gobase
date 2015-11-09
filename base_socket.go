@@ -312,7 +312,7 @@ type UDPMsg struct {
 }
 
 type BaseUDPStream struct {
-	*net.UDPConn
+	net.Conn
 	IBaseUDPStreamHandle
 	closed                bool
 	writeChan             chan *UDPMsg
@@ -341,7 +341,7 @@ func (s *BaseUDPStream) Start(ip string, port int32) (err error) {
 		IP:   net.ParseIP(ip),
 		Port: int(port),
 	}
-	s.UDPConn, err = net.ListenUDP("udp4", udpAddr)
+	s.Conn, err = net.ListenUDP("udp4", udpAddr)
 	if err != nil {
 		//log.Error("server bind %s:%d failed, err: %v", ip, port, err)
 		goto end
@@ -364,7 +364,7 @@ end:
 func (s *BaseUDPStream) readLoop() {
 	for {
 		p := make([]byte, 1024)
-		n, addr, err := s.UDPConn.ReadFromUDP(p)
+		n, addr, err := s.Conn.(*net.UDPConn).ReadFromUDP(p)
 		if err != nil {
 			if s.IBaseUDPStreamHandle != nil {
 				s.IBaseUDPStreamHandle.OnException(err)
@@ -383,7 +383,7 @@ exit1:
 	for {
 		select {
 		case udpMsg := <-s.writeChan:
-			s.UDPConn.WriteTo(udpMsg.data, udpMsg.destAddr)
+			s.Conn.(*net.UDPConn).WriteTo(udpMsg.data, udpMsg.destAddr)
 			if len(s.writeChan) == 0 && s.writeEmptyChan != nil {
 				s.writeEmptyChan <- true
 			}
@@ -421,7 +421,7 @@ func (s *BaseUDPStream) Flush() {
 
 func (s *BaseUDPStream) Close() {
 	if s.closed != true {
-		s.UDPConn.Close()
+		s.Conn.Close()
 		s.closed = true
 		s.writtingLoopCloseChan <- true
 
@@ -512,7 +512,7 @@ func (h *BaseUnixClientHandle) OnConnect(bConnected bool) {
 }
 
 type BaseUnixStream struct {
-	*net.UnixConn
+	net.Conn
 	reader                *bufio.Reader
 	writer                *bufio.Writer
 	writeChan             chan []byte
@@ -534,7 +534,7 @@ type BaseUnixClient struct {
 
 func (c *BaseUnixStream) Close() {
 	if c.closed != true {
-		c.UnixConn.Close()
+		c.Conn.Close()
 		c.closed = true
 		c.writtingLoopCloseChan <- true
 		if c.IBaseUnixStreamHandle != nil {
@@ -579,7 +579,7 @@ func (c *BaseUnixStream) readLoop() {
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnRead(p[:n])
 		}
-		c.UnixConn.SetDeadline(time.Now().Add(2 * time.Minute))
+		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	}
 }
 
@@ -612,24 +612,24 @@ func (c *BaseUnixStream) write(data []byte) {
 		}
 	} else {
 		c.writer.Flush()
-		c.UnixConn.SetDeadline(time.Now().Add(2 * time.Minute))
+		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	}
 }
 
 func (c *BaseUnixStream) start() {
-	c.reader = bufio.NewReaderSize(c.UnixConn, 32*1024)
-	c.writer = bufio.NewWriterSize(c.UnixConn, 32*1024)
+	c.reader = bufio.NewReaderSize(c.Conn, 32*1024)
+	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	c.checkEmptyChan = make(chan bool, 1)
-	c.UnixConn.SetDeadline(time.Now().Add(2 * time.Minute))
+	c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
 	go c.writeLoop()
 }
 
-/// TCP Session
+/// UnixSock Session
 func (c *BaseUnixSession) Start() {
 	c.start()
 	if _, ok := c.IBaseUnixStreamHandle.(IBaseUnixSessionHandle); ok {
@@ -656,7 +656,7 @@ func (c *BaseUnixClient) ConnectByAddr(addr string) error {
 		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnConnect(false)
 		return err
 	}
-	c.UnixConn = conn
+	c.Conn = conn
 
 	if _, ok := c.IBaseUnixStreamHandle.(IBaseUnixClientHandle); ok {
 		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnConnect(true)
@@ -692,7 +692,7 @@ func (h *BaseUnixServerHandle) OnException(err error) {
 }
 
 type BaseUnixServer struct {
-	*net.UnixListener
+	net.Listener
 	closed bool
 	IBaseUnixServerHandle
 }
@@ -703,7 +703,7 @@ func (s *BaseUnixServer) StartByAddr(addr string) (err error) {
   	if err != nil {
    		goto end
   	}
-	s.UnixListener, err = net.ListenUnix("unix", unixAddr)
+	s.Listener, err = net.ListenUnix("unix", unixAddr)
 	if err != nil {
 		//log.Error("server bind %s failed, err: %s", addr, err.Error())
 		goto end
@@ -721,7 +721,7 @@ end:
 
 func (s *BaseUnixServer) acceptLoop() {
 	for {
-		conn, err := s.UnixListener.AcceptUnix()
+		conn, err := s.Listener.(*net.UnixListener).AcceptUnix()
 		if err != nil {
 			if s.IBaseUnixServerHandle != nil {
 				s.IBaseUnixServerHandle.OnException(err)
@@ -737,7 +737,7 @@ func (s *BaseUnixServer) acceptLoop() {
 
 func (s *BaseUnixServer) Close() {
 	if s.closed != true {
-		s.UnixListener.Close()
+		s.Listener.Close()
 		s.closed = true
 		if s.IBaseUnixServerHandle != nil {
 			s.IBaseUnixServerHandle.OnClose()
