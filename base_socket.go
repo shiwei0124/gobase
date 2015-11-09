@@ -669,7 +669,7 @@ func (c *BaseUnixClient) ConnectByAddr(addr string) error {
 type IBaseUnixServerHandle interface {
 	IBaseStreamHandle
 	OnStart()
-	OnAccept(c *net.UnixConn)
+	OnAccept(c net.Conn)
 }
 
 type BaseUnixServerHandle struct {
