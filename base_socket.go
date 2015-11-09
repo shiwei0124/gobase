@@ -694,7 +694,7 @@ func (h *BaseUnixServerHandle) OnException(err error) {
 type BaseUnixServer struct {
 	net.Listener
 	closed bool
-	IBaseUnixServerHandle
+	IBaseStreamHandle
 }
 
 func (s *BaseUnixServer) StartByAddr(addr string) (err error) {
@@ -710,8 +710,8 @@ func (s *BaseUnixServer) StartByAddr(addr string) (err error) {
 	} else {
 		//log.Info("server bind %s successed.", addr)
 	}
-	if s.IBaseUnixServerHandle != nil {
-		s.IBaseUnixServerHandle.OnStart()
+	if s.IBaseStreamHandle != nil {
+		s.IBaseStreamHandle.(IBaseUnixServerHandle).OnStart()
 	}
 
 	go s.acceptLoop()
@@ -723,13 +723,13 @@ func (s *BaseUnixServer) acceptLoop() {
 	for {
 		conn, err := s.Listener.(*net.UnixListener).AcceptUnix()
 		if err != nil {
-			if s.IBaseUnixServerHandle != nil {
-				s.IBaseUnixServerHandle.OnException(err)
+			if s.IBaseStreamHandle != nil {
+				s.IBaseStreamHandle.(IBaseUnixServerHandle).OnException(err)
 			}
 			break
 		}
-		if s.IBaseUnixServerHandle != nil {
-			s.IBaseUnixServerHandle.OnAccept(conn)
+		if s.IBaseStreamHandle != nil {
+			s.IBaseStreamHandle.(IBaseUnixServerHandle).OnAccept(conn)
 		}
 	}
 	return
@@ -739,8 +739,8 @@ func (s *BaseUnixServer) Close() {
 	if s.closed != true {
 		s.Listener.Close()
 		s.closed = true
-		if s.IBaseUnixServerHandle != nil {
-			s.IBaseUnixServerHandle.OnClose()
+		if s.IBaseStreamHandle != nil {
+			s.IBaseStreamHandle.(IBaseUnixServerHandle).OnClose()
 		}
 	}
 }
