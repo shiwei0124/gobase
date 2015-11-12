@@ -148,7 +148,7 @@ exit1:
 				c.writeEmptyChan <- true
 			}
 		case <-c.checkEmptyChan:
-			if len(c.writeChan) == 0 {
+			if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
 				c.writeEmptyChan <- true
 			}
 		case <-c.writtingLoopCloseChan:
@@ -388,7 +388,7 @@ exit1:
 				s.writeEmptyChan <- true
 			}
 		case <-s.checkEmptyChan:
-			if len(s.writeChan) == 0 {
+			if len(s.writeChan) == 0 && s.writeEmptyChan != nil {
 				s.writeEmptyChan <- true
 			}
 		case <-s.writtingLoopCloseChan:
