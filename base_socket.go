@@ -311,8 +311,7 @@ type BaseUDPStream struct {
 	closed                bool
 	writeChan             chan *UDPMsg
 	writtingLoopCloseChan chan bool
-	writeEmptyChan        chan bool
-	checkEmptyChan        chan bool
+	writeEmptyWait			*sync.WaitGroup
 }
 
 func (s *BaseUDPStream) StartByAddr(addr string) error {
@@ -348,7 +347,7 @@ func (s *BaseUDPStream) Start(ip string, port int32) (err error) {
 
 	s.writeChan = make(chan *UDPMsg, 1000)
 	s.writtingLoopCloseChan = make(chan bool, 1)
-	s.checkEmptyChan = make(chan bool, 1)
+	s.writeEmptyWait = &sync.WaitGroup {}
 	go s.readLoop()
 	go s.writeLoop()
 end:
@@ -378,13 +377,7 @@ exit1:
 		select {
 		case udpMsg := <-s.writeChan:
 			s.Conn.(*net.UDPConn).WriteTo(udpMsg.data, udpMsg.destAddr)
-			if len(s.writeChan) == 0 && s.writeEmptyChan != nil {
-				s.writeEmptyChan <- true
-			}
-		case <-s.checkEmptyChan:
-			if len(s.writeChan) == 0 && s.writeEmptyChan != nil {
-				s.writeEmptyChan <- true
-			}
+			s.writeEmptyWait.Done()
 		case <-s.writtingLoopCloseChan:
 			//log.Trace("session writting chan stoped")
 			break exit1
@@ -398,6 +391,7 @@ func (s *BaseUDPStream) WriteToUDP(data []byte, addr *net.UDPAddr) {
 }
 
 func (s *BaseUDPStream) WriteTo(data []byte, addr net.Addr) {
+	s.writeEmptyWait.Add(1)
 	udpMsg := &UDPMsg{
 		data:     data,
 		destAddr: addr,
@@ -406,11 +400,9 @@ func (s *BaseUDPStream) WriteTo(data []byte, addr net.Addr) {
 }
 
 func (s *BaseUDPStream) Flush() {
-	s.writeEmptyChan = make(chan bool, 1000)
-	s.checkEmptyChan <- true
-	<-s.writeEmptyChan
-	close(s.writeEmptyChan)
-	s.writeEmptyChan = nil
+	if s.writeEmptyWait != nil {
+		s.writeEmptyWait.Wait()
+	}
 }
 
 func (s *BaseUDPStream) Close() {
