@@ -12,5 +12,5 @@ func Test_Write(t *testing.T) {
 	tmp := NewBytesStreamR(bytesStream.Data())
 	n := tmp.ReadUint16()
 	fmt.Println(n)
-	
+
 }

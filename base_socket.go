@@ -4,6 +4,7 @@ package gobase
 import (
 	"errors"
 	"strings"
+	"sync"
 	//"fmt"
 	"bufio"
 	"net"
@@ -72,10 +73,9 @@ type BaseTCPStream struct {
 	writer                *bufio.Writer
 	writeChan             chan []byte
 	writtingLoopCloseChan chan bool
-	writeEmptyChan        chan bool
-	checkEmptyChan        chan bool
 	closed                bool
 	IBaseTCPStreamHandle
+	writeEmptyWait *sync.WaitGroup
 }
 
 type BaseTCPSession struct {
@@ -100,6 +100,7 @@ func (c *BaseTCPStream) Close() {
 
 func (c *BaseTCPStream) Write(data []byte) {
 	if c.closed != true {
+		c.writeEmptyWait.Add(1)
 		c.writeChan <- data
 	}
 }
@@ -112,11 +113,9 @@ func (c *BaseTCPStream) WriteString(data string) {
 }
 
 func (c *BaseTCPStream) Flush() {
-	c.writeEmptyChan = make(chan bool, 1000)
-	c.checkEmptyChan <- true
-	<-c.writeEmptyChan
-	close(c.writeEmptyChan)
-	c.writeEmptyChan = nil
+	if c.writeEmptyWait != nil {
+		c.writeEmptyWait.Wait()
+	}
 }
 
 func (c *BaseTCPStream) readLoop() {
@@ -144,13 +143,6 @@ exit1:
 		select {
 		case data := <-c.writeChan:
 			c.write(data)
-			if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
-				c.writeEmptyChan <- true
-			}
-		case <-c.checkEmptyChan:
-			if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
-				c.writeEmptyChan <- true
-			}
 		case <-c.writtingLoopCloseChan:
 			//log.Trace("session writting chan stoped")
 			break exit1
@@ -162,10 +154,12 @@ exit1:
 func (c *BaseTCPStream) write(data []byte) {
 	//c.Conn.Write(data)
 	if _, err := c.writer.Write(data); err != nil {
+		c.writeEmptyWait.Done()
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnException(err)
 		}
 	} else {
+		c.writeEmptyWait.Done()
 		c.writer.Flush()
 		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	}
@@ -177,7 +171,7 @@ func (c *BaseTCPStream) start() {
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
-	c.checkEmptyChan = make(chan bool, 1)
+	c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
@@ -517,10 +511,9 @@ type BaseUnixStream struct {
 	writer                *bufio.Writer
 	writeChan             chan []byte
 	writtingLoopCloseChan chan bool
-	writeEmptyChan        chan bool
-	checkEmptyChan        chan bool
 	closed                bool
 	IBaseUnixStreamHandle
+	writeEmptyWait *sync.WaitGroup
 }
 
 type BaseUnixSession struct {
@@ -545,6 +538,7 @@ func (c *BaseUnixStream) Close() {
 
 func (c *BaseUnixStream) Write(data []byte) {
 	if c.closed != true {
+		c.writeEmptyWait.Add(1)
 		c.writeChan <- data
 	}
 }
@@ -557,11 +551,9 @@ func (c *BaseUnixStream) WriteString(data string) {
 }
 
 func (c *BaseUnixStream) Flush() {
-	c.writeEmptyChan = make(chan bool, 1000)
-	c.checkEmptyChan <- true
-	<-c.writeEmptyChan
-	close(c.writeEmptyChan)
-	c.writeEmptyChan = nil
+	if c.writeEmptyWait != nil {
+		c.writeEmptyWait.Wait()
+	}
 }
 
 func (c *BaseUnixStream) readLoop() {
@@ -589,13 +581,6 @@ exit1:
 		select {
 		case data := <-c.writeChan:
 			c.write(data)
-			if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
-				c.writeEmptyChan <- true
-			}
-		case <-c.checkEmptyChan:
-			if len(c.writeChan) == 0 && c.writeEmptyChan != nil {
-				c.writeEmptyChan <- true
-			}
 		case <-c.writtingLoopCloseChan:
 			//log.Trace("session writting chan stoped")
 			break exit1
@@ -607,10 +592,12 @@ exit1:
 func (c *BaseUnixStream) write(data []byte) {
 	//c.Conn.Write(data)
 	if _, err := c.writer.Write(data); err != nil {
+		c.writeEmptyWait.Done()
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnException(err)
 		}
 	} else {
+		c.writeEmptyWait.Done()
 		c.writer.Flush()
 		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	}
@@ -622,7 +609,7 @@ func (c *BaseUnixStream) start() {
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
-	c.checkEmptyChan = make(chan bool, 1)
+	c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
@@ -642,12 +629,12 @@ func (c *BaseUnixSession) Start() {
 //addr: "/tmp/fileserver.socket"
 func (c *BaseUnixClient) ConnectByAddr(addr string) error {
 	c.closed = true
-	c.RemoteAddress = addr	
+	c.RemoteAddress = addr
 	unixAddr, err := net.ResolveUnixAddr("unix", addr)
-  	if err != nil {
-   		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnException(err)
+	if err != nil {
+		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnException(err)
 		return err
-  	}
+	}
 
 	//阻塞
 	conn, err := net.DialUnix("unix", nil, unixAddr)
@@ -700,9 +687,9 @@ type BaseUnixServer struct {
 func (s *BaseUnixServer) StartByAddr(addr string) (err error) {
 	var unixAddr *net.UnixAddr
 	unixAddr, err = net.ResolveUnixAddr("unix", addr)
-  	if err != nil {
-   		goto end
-  	}
+	if err != nil {
+		goto end
+	}
 	s.Listener, err = net.ListenUnix("unix", unixAddr)
 	if err != nil {
 		//log.Error("server bind %s failed, err: %s", addr, err.Error())

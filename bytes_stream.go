@@ -59,7 +59,7 @@ func (s *BytesStream) ReadBytes(length int) []byte {
 	return res
 }
 
-// pack data 
+// pack data
 func NewBytesStreamW() *BytesStream {
 	bytesStream := &BytesStream{
 		data: make([]byte, 0),
