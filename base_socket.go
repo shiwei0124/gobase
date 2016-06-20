@@ -133,7 +133,7 @@ func (c *BaseTCPStream) readLoop() {
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnRead(p[:n])
 		}
-		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
+		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
 	}
 }
 
@@ -161,7 +161,7 @@ func (c *BaseTCPStream) write(data []byte) {
 	} else {
 		c.writeEmptyWait.Done()
 		c.writer.Flush()
-		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
+		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
 	}
 }
 
@@ -172,7 +172,7 @@ func (c *BaseTCPStream) start() {
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	c.writeEmptyWait = &sync.WaitGroup{}
-	c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
+	c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
 	go c.writeLoop()
@@ -311,7 +311,7 @@ type BaseUDPStream struct {
 	closed                bool
 	writeChan             chan *UDPMsg
 	writtingLoopCloseChan chan bool
-	writeEmptyWait			*sync.WaitGroup
+	writeEmptyWait        *sync.WaitGroup
 }
 
 func (s *BaseUDPStream) StartByAddr(addr string) error {
@@ -347,7 +347,7 @@ func (s *BaseUDPStream) Start(ip string, port int32) (err error) {
 
 	s.writeChan = make(chan *UDPMsg, 1000)
 	s.writtingLoopCloseChan = make(chan bool, 1)
-	s.writeEmptyWait = &sync.WaitGroup {}
+	s.writeEmptyWait = &sync.WaitGroup{}
 	go s.readLoop()
 	go s.writeLoop()
 end:
@@ -563,7 +563,7 @@ func (c *BaseUnixStream) readLoop() {
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnRead(p[:n])
 		}
-		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
+		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
 	}
 }
 
@@ -591,7 +591,7 @@ func (c *BaseUnixStream) write(data []byte) {
 	} else {
 		c.writeEmptyWait.Done()
 		c.writer.Flush()
-		c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
+		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
 	}
 }
 
@@ -602,7 +602,7 @@ func (c *BaseUnixStream) start() {
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	c.writeEmptyWait = &sync.WaitGroup{}
-	c.Conn.SetDeadline(time.Now().Add(2 * time.Minute))
+	c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
 	go c.writeLoop()
