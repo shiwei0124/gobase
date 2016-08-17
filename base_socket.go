@@ -3,6 +3,7 @@ package gobase
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
 	//"fmt"
@@ -760,5 +761,37 @@ func (s *BaseUnixServer) Close() {
 		if s.IBaseUnixServerHandle != nil {
 			s.IBaseUnixServerHandle.OnClose()
 		}
+	}
+}
+
+type BaseHttpServer struct {
+	http.Server
+}
+
+func (s *BaseHttpServer) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+	if s.Handler == nil {
+		s.Handler = http.NewServeMux()
+	}
+	s.Handler.(*http.ServeMux).HandleFunc(pattern, handler)
+}
+
+//addr: "ip:port"
+func (s *BaseHttpServer) Start(addr string) error {
+	if listener, err := s.listen(addr); err != nil {
+		return err
+	} else {
+		go s.Serve(listener)
+	}
+	return nil
+}
+
+func (s *BaseHttpServer) listen(addr string) (net.Listener, error) {
+	if addr == "" {
+		addr = ":http"
+	}
+	if ln, err := net.Listen("tcp", addr); err != nil {
+		return nil, err
+	} else {
+		return ln, nil
 	}
 }
