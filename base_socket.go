@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+const (
+	DEFAULT_DEADLINE        = 130
+	DEFAULT_CONNECT_TIMEOUT = 15
+)
+
 type IBaseIOStream interface {
 	Close()
 }
@@ -69,6 +74,7 @@ func (h *BaseTCPClientHandle) OnConnect(bConnected bool) {
 
 type BaseTCPStream struct {
 	net.Conn
+	deadLine              time.Duration //unit: second
 	reader                *bufio.Reader
 	writer                *bufio.Writer
 	writeChan             chan []byte
@@ -133,7 +139,7 @@ func (c *BaseTCPStream) readLoop() {
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnRead(p[:n])
 		}
-		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
+		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
 
@@ -161,18 +167,19 @@ func (c *BaseTCPStream) write(data []byte) {
 	} else {
 		c.writeEmptyWait.Done()
 		c.writer.Flush()
-		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
+		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
 
-func (c *BaseTCPStream) start() {
+func (c *BaseTCPStream) start(deadLine time.Duration) {
+	c.deadLine = deadLine
 	c.reader = bufio.NewReaderSize(c.Conn, 32*1024)
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	c.writeEmptyWait = &sync.WaitGroup{}
-	c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
+	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
 	go c.writeLoop()
@@ -180,7 +187,11 @@ func (c *BaseTCPStream) start() {
 
 /// TCP Session
 func (c *BaseTCPSession) Start() {
-	c.start()
+	c.StartByDeadLine(DEFAULT_DEADLINE)
+}
+
+func (c *BaseTCPSession) StartByDeadLine(deadLine time.Duration) {
+	c.start(deadLine)
 	if _, ok := c.IBaseTCPStreamHandle.(IBaseTCPSessionHandle); ok {
 		c.IBaseTCPStreamHandle.(IBaseTCPSessionHandle).OnStart()
 	}
@@ -193,12 +204,22 @@ func (c *BaseTCPClient) Connect(ip string, port int32) error {
 	return c.ConnectByAddr(addr)
 }
 
+func (c *BaseTCPClient) ConnectTimeOut(ip string, port int32, timeOut time.Duration, deadLine time.Duration) error {
+	addr := ip + ":" + strconv.FormatInt(int64(port), 10)
+	return c.ConnectByAddrTimeOut(addr, timeOut, deadLine)
+}
+
 //addr: "127.0.0.1:80"
 func (c *BaseTCPClient) ConnectByAddr(addr string) error {
+	return c.ConnectByAddrTimeOut(addr, DEFAULT_CONNECT_TIMEOUT, DEFAULT_DEADLINE)
+}
+
+//addr: "127.0.0.1:80"
+func (c *BaseTCPClient) ConnectByAddrTimeOut(addr string, timeOut time.Duration, deadLine time.Duration) error {
 	c.closed = true
 	c.RemoteAddress = addr
 	//阻塞
-	conn, err := net.DialTimeout("tcp", addr, time.Duration(15)*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, timeOut*time.Second)
 	if err != nil {
 		//log.Error("connect failed, err: ", err)
 		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(false)
@@ -209,7 +230,7 @@ func (c *BaseTCPClient) ConnectByAddr(addr string) error {
 	if _, ok := c.IBaseTCPStreamHandle.(IBaseTCPClientHandle); ok {
 		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(true)
 	}
-	c.start()
+	c.start(deadLine)
 	return nil
 }
 
@@ -499,6 +520,7 @@ func (h *BaseUnixClientHandle) OnConnect(bConnected bool) {
 
 type BaseUnixStream struct {
 	net.Conn
+	deadLine              time.Duration //unit: second
 	reader                *bufio.Reader
 	writer                *bufio.Writer
 	writeChan             chan []byte
@@ -563,7 +585,7 @@ func (c *BaseUnixStream) readLoop() {
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnRead(p[:n])
 		}
-		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
+		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
 
@@ -591,18 +613,19 @@ func (c *BaseUnixStream) write(data []byte) {
 	} else {
 		c.writeEmptyWait.Done()
 		c.writer.Flush()
-		c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
+		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
 
-func (c *BaseUnixStream) start() {
+func (c *BaseUnixStream) start(deadLine time.Duration) {
+	c.deadLine = deadLine
 	c.reader = bufio.NewReaderSize(c.Conn, 32*1024)
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	c.writeEmptyWait = &sync.WaitGroup{}
-	c.Conn.SetDeadline(time.Now().Add(130 * time.Second))
+	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
 	go c.writeLoop()
@@ -610,7 +633,11 @@ func (c *BaseUnixStream) start() {
 
 /// UnixSock Session
 func (c *BaseUnixSession) Start() {
-	c.start()
+	c.StartByDeadLine(DEFAULT_DEADLINE)
+}
+
+func (c *BaseUnixSession) StartByDeadLine(deadLine time.Duration) {
+	c.start(deadLine)
 	if _, ok := c.IBaseUnixStreamHandle.(IBaseUnixSessionHandle); ok {
 		c.IBaseUnixStreamHandle.(IBaseUnixSessionHandle).OnStart()
 	}
@@ -620,6 +647,10 @@ func (c *BaseUnixSession) Start() {
 //阻塞得到结果
 //addr: "/tmp/fileserver.socket"
 func (c *BaseUnixClient) ConnectByAddr(addr string) error {
+	return c.ConnectByAddrWithDeadLine(addr, DEFAULT_DEADLINE)
+}
+
+func (c *BaseUnixClient) ConnectByAddrWithDeadLine(addr string, deadLine time.Duration) error {
 	c.closed = true
 	c.RemoteAddress = addr
 	unixAddr, err := net.ResolveUnixAddr("unix", addr)
@@ -640,7 +671,7 @@ func (c *BaseUnixClient) ConnectByAddr(addr string) error {
 	if _, ok := c.IBaseUnixStreamHandle.(IBaseUnixClientHandle); ok {
 		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnConnect(true)
 	}
-	c.start()
+	c.start(deadLine)
 	return nil
 }
 
