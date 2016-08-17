@@ -93,6 +93,10 @@ type BaseTCPClient struct {
 	RemoteAddress string
 }
 
+func (c *BaseTCPStream) SetDeadLine(deadLine time.Duration) {
+	c.deadLine = deadLine
+}
+
 func (c *BaseTCPStream) Close() {
 	if c.closed != true {
 		c.Conn.Close()
@@ -537,6 +541,10 @@ type BaseUnixSession struct {
 type BaseUnixClient struct {
 	BaseUnixStream
 	RemoteAddress string
+}
+
+func (c *BaseUnixStream) SetDeadLine(deadLine time.Duration) {
+	c.deadLine = deadLine
 }
 
 func (c *BaseUnixStream) Close() {
