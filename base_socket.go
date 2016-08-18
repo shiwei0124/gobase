@@ -766,16 +766,33 @@ func (s *BaseUnixServer) Close() {
 	}
 }
 
+func Vars(r *http.Request) map[string]string {
+	return mux.Vars(r)
+}
+
+type Router struct {
+	mux.Router
+}
+
 type BaseHttpServer struct {
 	http.Server
 }
 
-func (s *BaseHttpServer) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+func (s *BaseHttpServer) checkRouter() {
 	if s.Handler == nil {
 		//s.Handler = http.NewServeMux()
 		s.Handler = mux.NewRouter()
 	}
-	s.Handler.(*http.ServeMux).HandleFunc(pattern, handler)
+}
+
+func (s *BaseHttpServer) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) *mux.Route {
+	s.checkRouter()
+	return s.Handler.(*mux.Router).HandleFunc(pattern, handler)
+}
+
+func (s *BaseHttpServer) Router() *Router {
+	s.checkRouter()
+	return s.Handler.(*Router)
 }
 
 //addr: "ip:port"
