@@ -11,6 +11,8 @@ import (
 	"net"
 	"strconv"
 	"time"
+
+	mux "github.com/gorilla/mux"
 )
 
 const (
@@ -770,7 +772,8 @@ type BaseHttpServer struct {
 
 func (s *BaseHttpServer) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
 	if s.Handler == nil {
-		s.Handler = http.NewServeMux()
+		//s.Handler = http.NewServeMux()
+		s.Handler = mux.NewRouter()
 	}
 	s.Handler.(*http.ServeMux).HandleFunc(pattern, handler)
 }
