@@ -10,7 +10,7 @@ import (
 
 func Test_BaseHttpServer(t *testing.T) {
 	s := &BaseHttpServer{}
-	s.HandleFunc("/test", test)
+	s.HandleFunc("/test/{domain1}", test)
 	s.HandleFunc("/test2/{domain}", test2)
 
 	s.Start("127.0.0.1:10001")
@@ -19,6 +19,8 @@ func Test_BaseHttpServer(t *testing.T) {
 }
 
 func test(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("222222")
+	fmt.Println(Vars(r)["domain1"])
 	w.Write([]byte("111111"))
 }
 

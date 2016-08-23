@@ -776,6 +776,7 @@ type Router struct {
 
 type BaseHttpServer struct {
 	http.Server
+	listener net.Listener
 }
 
 func (s *BaseHttpServer) checkRouter() {
@@ -800,9 +801,16 @@ func (s *BaseHttpServer) Start(addr string) error {
 	if listener, err := s.listen(addr); err != nil {
 		return err
 	} else {
+		s.listener = listener
 		go s.Serve(listener)
 	}
 	return nil
+}
+
+func (s *BaseHttpServer) Stop() {
+	if s.listener != nil {
+		s.listener.Close()
+	}
 }
 
 func (s *BaseHttpServer) listen(addr string) (net.Listener, error) {
