@@ -20,6 +20,12 @@ const (
 	DEFAULT_CONNECT_TIMEOUT = 15
 )
 
+var SOCKET_READ_BUFFER_SIZE int64 //一次读数据的大小
+
+func init() {
+	SOCKET_READ_BUFFER_SIZE = 1024
+}
+
 type IBaseIOStream interface {
 	Close()
 }
@@ -132,7 +138,7 @@ func (c *BaseTCPStream) Flush() {
 }
 
 func (c *BaseTCPStream) readLoop() {
-	p := make([]byte, 1024)
+	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
 		n, err := c.reader.Read(p)
 		if err != nil {
@@ -384,7 +390,7 @@ end:
 
 func (s *BaseUDPStream) readLoop() {
 	for {
-		p := make([]byte, 1024)
+		p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 		n, addr, err := s.Conn.(*net.UDPConn).ReadFromUDP(p)
 		if err != nil {
 			if s.IBaseUDPStreamHandle != nil {
@@ -582,7 +588,7 @@ func (c *BaseUnixStream) Flush() {
 }
 
 func (c *BaseUnixStream) readLoop() {
-	p := make([]byte, 1024)
+	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
 		n, err := c.reader.Read(p)
 		if err != nil {
