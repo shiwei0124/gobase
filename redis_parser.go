@@ -21,45 +21,75 @@ var (
 )
 
 var ErrUnexpectedRESPEOF = errors.New("unexpected RESP EOF")
+var ErrBufferFullRESP = errors.New("buffered full RESP")
 
 type RedisCmd struct {
-	br *bufio.Reader
+	data          []byte
+	br            *bufio.Reader
+	neededDataLen int
 }
 
 func NewRedisCmd(data []byte) *RedisCmd {
 	reader := bytes.NewReader(data)
 	br := bufio.NewReader(reader)
+	dataTmp := make([]byte, 0)
+	dataTmp = append(dataTmp, data...)
 	return &RedisCmd{
-		br: br,
+		data:          dataTmp,
+		br:            br,
+		neededDataLen: 0,
 	}
 }
 
+func (c *RedisCmd) Data() []byte {
+	return c.data
+}
+
 func (c *RedisCmd) ParseRequest() (interface{}, error) {
-	if req, err := parseRESP(c.br); err != nil {
-		if err == ErrUnexpectedRESPEOF {
+	if req, neededDataLen, err := parseRESP(c.br); err != nil {
+		c.neededDataLen = neededDataLen
+		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
 			return nil, err
 		}
 		return nil, errors.New(fmt.Sprintf("parse redis request failed, err: %s", err.Error()))
 	} else {
+		c.neededDataLen = 0
 		return req, nil
 	}
 }
 
 func (c *RedisCmd) ParseResponse() (interface{}, error) {
-	if resp, err := parseRESP(c.br); err != nil {
-		if err == ErrUnexpectedRESPEOF {
+	if resp, neededDataLen, err := parseRESP(c.br); err != nil {
+		c.neededDataLen = neededDataLen
+		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
 			return nil, err
 		}
 		return nil, errors.New(fmt.Sprintf("parse redis response failed, err: %s", err.Error()))
 	} else {
+		c.neededDataLen = 0
 		return resp, nil
+	}
+}
+
+func (c *RedisCmd) AppendData(extraData []byte) bool {
+	c.data = append(c.data, extraData...)
+	extraDataLen := len(extraData)
+	c.neededDataLen -= extraDataLen
+	if c.neededDataLen <= 0 {
+		c.neededDataLen = 0
+		reader := bytes.NewReader(c.data)
+		c.br = bufio.NewReader(reader)
+		return true
+	} else {
+		//数据仍然不够
+		return false
 	}
 }
 
 func readLine(br *bufio.Reader) ([]byte, error) {
 	p, err := br.ReadSlice('\n')
 	if err == bufio.ErrBufferFull {
-		return nil, ErrUnexpectedRESPEOF
+		return nil, ErrBufferFullRESP
 	}
 	if err != nil {
 		return nil, err
@@ -141,68 +171,83 @@ func parseInt(p []byte) (RESP_INTEGER, error) {
 	return RESP_INTEGER(n), nil
 }
 
-func parseBulkString(line []byte, br *bufio.Reader) (RESP_BULK_STRING, error) {
+//当error为ErrUnexpectedRESPEOF时，说明还缺少数据，并不是一个完整的bulk string
+//还缺少的数据由第二个参数返回,其余n的值则都是0
+func parseBulkString(line []byte, br *bufio.Reader) (RESP_BULK_STRING, int, error) {
+	neededDataLen := 0
 	n, err := parseLen(line[0:])
 	if n < 0 || err != nil {
-		return "", err
+		return "", neededDataLen, err
 	}
 	p := make([]byte, n)
-	_, err = io.ReadFull(br, p)
+	var n2 int
+	n2, err = io.ReadFull(br, p)
+	if err == io.ErrUnexpectedEOF || err == io.EOF {
+		neededDataLen = n - n2
+		return "", neededDataLen, ErrUnexpectedRESPEOF
+	}
 	if err != nil {
-		return "", err
+		return "", neededDataLen, err
 	}
 	if line, err := readLine(br); err != nil {
-		return "", err
+		return "", neededDataLen, err
 	} else if len(line) != 0 {
-		return "", errors.New("bad bulk string format")
+		return "", neededDataLen, errors.New("bad bulk string format")
 	}
-	return RESP_BULK_STRING(p), nil
+	return RESP_BULK_STRING(p), neededDataLen, nil
 }
 
-//解析array型数据
-func parseArrayData(br *bufio.Reader, arrayNum int) (RESP_ARRAY, error) {
+//解析array型数据,当错误类型为ErrUnexpectedRESPEOF，表示Array Data内的bulk string数
+//据并不全，还缺少多少长度的数据由第二个参数返回
+func parseArrayData(br *bufio.Reader, arrayNum int) (RESP_ARRAY, int, error) {
 	r := make([]interface{}, 0)
+	neededDataLen := 0
 	for i := 0; i < arrayNum; i++ {
-		if data, err := parseRESP(br); err != nil {
-			return nil, errors.New("bad arrayData format")
+		if data, neededDataLen, err := parseRESP(br); err != nil {
+			if ErrUnexpectedRESPEOF == err {
+				return nil, neededDataLen, err
+			} else {
+				errString := fmt.Sprintf("bad arrayData format: %s", err.Error())
+				return nil, neededDataLen, errors.New(errString)
+			}
 		} else {
 			r = append(r, data)
 		}
 	}
-	return r, nil
+	return r, neededDataLen, nil
 }
 
 //解析RESP协议
-func parseRESP(br *bufio.Reader) (interface{}, error) {
+func parseRESP(br *bufio.Reader) (interface{}, int, error) {
+	neededDataLen := 0
 	line, err := readLine(br)
 	if err != nil {
-		return nil, err
+		return nil, neededDataLen, err
 	}
 	if len(line) == 0 {
-		return nil, errors.New("short resp line")
+		return nil, neededDataLen, errors.New("short resp line")
 	}
 
 	switch line[0] {
 	case '+':
-		return parseSimpleString(line[1:])
+		respSimpleString, err2 := parseSimpleString(line[1:])
+		return respSimpleString, neededDataLen, err2
 	case '-':
-		return parseError(line[1:])
+		respError, err2 := parseError(line[1:])
+		return respError, neededDataLen, err2
 	case ':':
-		return parseInt(line[1:])
+		respInt, err2 := parseInt(line[1:])
+		return respInt, neededDataLen, err2
 	case '$':
 		return parseBulkString(line[1:], br)
 	case '*':
 		n, err := parseLen(line[1:])
 		if n < 0 || err != nil {
-			return nil, err
+			return nil, neededDataLen, err
 		}
-		if arrayData, err := parseArrayData(br, n); err != nil {
-			return nil, err
-		} else {
-			return arrayData, nil
-		}
+		return parseArrayData(br, n)
 	}
-	return nil, errors.New("unexpected redis data")
+	return nil, neededDataLen, errors.New("unexpected redis data")
 }
 
 func printRESPArray(data RESP_ARRAY) {
