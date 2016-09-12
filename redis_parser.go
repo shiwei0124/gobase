@@ -24,19 +24,15 @@ var ErrUnexpectedRESPEOF = errors.New("unexpected RESP EOF")
 var ErrBufferFullRESP = errors.New("buffered full RESP")
 
 type RedisCmd struct {
-	data          []byte
-	br            *bufio.Reader
+	data []byte
+	//br            *bufio.Reader
 	neededDataLen int
+	//respParseType RESPParseType
 }
 
 func NewRedisCmd(data []byte) *RedisCmd {
-	reader := bytes.NewReader(data)
-	br := bufio.NewReader(reader)
-	dataTmp := make([]byte, 0)
-	dataTmp = append(dataTmp, data...)
 	return &RedisCmd{
-		data:          dataTmp,
-		br:            br,
+		data:          data,
 		neededDataLen: 0,
 	}
 }
@@ -45,26 +41,46 @@ func (c *RedisCmd) Data() []byte {
 	return c.data
 }
 
+func (c *RedisCmd) String() string {
+	return string(c.data)
+}
+
 func (c *RedisCmd) ParseRequest() (interface{}, error) {
-	if req, neededDataLen, err := parseRESP(c.br); err != nil {
-		c.neededDataLen = neededDataLen
+	if object, err := c.parseRESP(); err != nil {
 		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
 			return nil, err
+		} else {
+			return nil, errors.New(fmt.Sprintf("parse redis request failed, err: %s", err.Error()))
 		}
-		return nil, errors.New(fmt.Sprintf("parse redis request failed, err: %s", err.Error()))
 	} else {
-		c.neededDataLen = 0
-		return req, nil
+		return object, err
 	}
 }
 
 func (c *RedisCmd) ParseResponse() (interface{}, error) {
-	if resp, neededDataLen, err := parseRESP(c.br); err != nil {
-		c.neededDataLen = neededDataLen
+	if object, err := c.parseRESP(); err != nil {
 		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
 			return nil, err
+		} else {
+			return nil, errors.New(fmt.Sprintf("parse redis response failed, err: %s", err.Error()))
 		}
-		return nil, errors.New(fmt.Sprintf("parse redis response failed, err: %s", err.Error()))
+	} else {
+		return object, err
+	}
+}
+
+func (c *RedisCmd) parseRESP() (interface{}, error) {
+	reader := bytes.NewReader(c.data)
+	br := bufio.NewReader(reader)
+	if resp, neededDataLen, err := parseRESP(br); err != nil {
+		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
+			//数据还没收完，则重新copy一份内存保存数据，避免使用原先的[]byte导致覆盖
+			dataTmp := make([]byte, 0)
+			dataTmp = append(dataTmp, c.data...)
+			c.data = dataTmp
+		}
+		c.neededDataLen = neededDataLen
+		return nil, err
 	} else {
 		c.neededDataLen = 0
 		return resp, nil
@@ -77,8 +93,6 @@ func (c *RedisCmd) AppendData(extraData []byte) bool {
 	c.neededDataLen -= extraDataLen
 	if c.neededDataLen <= 0 {
 		c.neededDataLen = 0
-		reader := bytes.NewReader(c.data)
-		c.br = bufio.NewReader(reader)
 		return true
 	} else {
 		//数据仍然不够
