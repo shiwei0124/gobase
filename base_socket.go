@@ -144,7 +144,7 @@ func (c *BaseTCPStream) readLoop() {
 		//n, err := c.reader.Read(p)
 		data, err := c.reader.Peek(int(SOCKET_READ_BUFFER_SIZE))
 		if err != nil {
-			fmt.Println("peek err, %s", err.Error())
+			fmt.Println("peek err, ", len(data), err.Error())
 		}
 		dataSize := len(data)
 		if err != nil && err != bufio.ErrBufferFull {
