@@ -71,7 +71,8 @@ func (c *RedisCmd) ParseResponse() (interface{}, error) {
 
 func (c *RedisCmd) parseRESP() (interface{}, error) {
 	reader := bytes.NewReader(c.data)
-	br := bufio.NewReader(reader)
+	//bufio 的 NewReader Size默认值比reader大的话，会reset多损耗性能
+	br := bufio.NewReaderSize(reader, reader.Len())
 	if resp, neededDataLen, err := parseRESP(br); err != nil {
 		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
 			//数据还没收完，则重新copy一份内存保存数据，避免使用原先的[]byte导致覆盖
