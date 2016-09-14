@@ -179,7 +179,7 @@ func (c *BaseTCPStream) write(data []byte) {
 		}
 	} else {
 		c.writeEmptyWait.Done()
-		c.writer.Flush()
+		//c.writer.Flush()
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
