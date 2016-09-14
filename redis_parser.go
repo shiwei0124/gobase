@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 )
 
 type RESP_SIMPLE_STRING string
@@ -202,16 +201,13 @@ func parseBulkString(line []byte, br *bufio.Reader) (RESP_BULK_STRING, int, erro
 	if n < 0 || err != nil {
 		return "", neededDataLen, err
 	}
-	p := make([]byte, n)
-	var n2 int
-	n2, err = io.ReadFull(br, p)
-	if err == io.ErrUnexpectedEOF || err == io.EOF {
-		neededDataLen = n - n2
+	brSize := br.Buffered()
+	//n+2： bulkString + "\r\n"
+	if n+2 > brSize {
+		neededDataLen = n + 2 - brSize
 		return "", neededDataLen, ErrUnexpectedRESPEOF
 	}
-	if err != nil {
-		return "", neededDataLen, err
-	}
+	p, _ := br.Peek(n)
 	if line, err := readLine(br); err != nil {
 		return "", neededDataLen, err
 	} else if len(line) != 0 {
