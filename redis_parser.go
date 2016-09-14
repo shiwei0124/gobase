@@ -208,6 +208,7 @@ func parseBulkString(line []byte, br *bufio.Reader) (RESP_BULK_STRING, int, erro
 		return "", neededDataLen, ErrUnexpectedRESPEOF
 	}
 	p, _ := br.Peek(n)
+	br.Discard(n)
 	if line, err := readLine(br); err != nil {
 		return "", neededDataLen, err
 	} else if len(line) != 0 {

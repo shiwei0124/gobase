@@ -3,6 +3,7 @@ package gobase
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -138,9 +139,14 @@ func (c *BaseTCPStream) Flush() {
 }
 
 func (c *BaseTCPStream) readLoop() {
-	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
+	//p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
-		n, err := c.reader.Read(p)
+		//n, err := c.reader.Read(p)
+		data, err := c.reader.Peek(int(SOCKET_READ_BUFFER_SIZE))
+		if err != nil {
+			fmt.Println("peek err, %s", err.Error())
+		}
+		dataSize := len(data)
 		if err != nil {
 			if c.IBaseTCPStreamHandle != nil {
 				c.IBaseTCPStreamHandle.OnException(err)
@@ -150,7 +156,11 @@ func (c *BaseTCPStream) readLoop() {
 			//log.Critical("read bytes num: %d", n)
 		}
 		if c.IBaseTCPStreamHandle != nil {
-			c.IBaseTCPStreamHandle.OnRead(p[:n])
+			c.IBaseTCPStreamHandle.OnRead(data)
+		}
+		n, err := c.reader.Discard(dataSize)
+		if err != nil {
+			fmt.Println("discard err, %d, %s.", n, err.Error())
 		}
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
