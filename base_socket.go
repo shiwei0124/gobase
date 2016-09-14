@@ -145,6 +145,8 @@ func (c *BaseTCPStream) readLoop() {
 		data, err := c.reader.Peek(int(SOCKET_READ_BUFFER_SIZE))
 		if err != nil {
 			fmt.Println("peek err, ", len(data), err.Error())
+		} else {
+			fmt.Println("peek ", len(data))
 		}
 		dataSize := len(data)
 		if err != nil && err != bufio.ErrBufferFull {
@@ -161,6 +163,8 @@ func (c *BaseTCPStream) readLoop() {
 		n, err := c.reader.Discard(dataSize)
 		if err != nil {
 			fmt.Println("discard err, %d, %s.", n, err.Error())
+		} else {
+			fmt.Println("discard %d", n)
 		}
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
