@@ -24,8 +24,9 @@ var ErrUnexpectedRESPEOF = errors.New("unexpected RESP EOF")
 var ErrBufferFullRESP = errors.New("buffered full RESP")
 
 type RedisCmd struct {
-	data []byte
-	//br            *bufio.Reader
+	data          []byte
+	r             *bytes.Reader
+	br            *bufio.Reader
 	neededDataLen int
 	//respParseType RESPParseType
 }
@@ -70,10 +71,17 @@ func (c *RedisCmd) ParseResponse() (interface{}, error) {
 }
 
 func (c *RedisCmd) parseRESP() (interface{}, error) {
-	reader := bytes.NewReader(c.data)
+	//reader := bytes.NewReader(c.data)
 	//bufio 的 NewReader Size默认值比reader大的话，会reset多损耗性能
-	br := bufio.NewReaderSize(reader, reader.Len())
-	if resp, neededDataLen, err := parseRESP(br); err != nil {
+	//br := bufio.NewReaderSize(reader, reader.Len())
+	if c.r == nil {
+		c.r = bytes.NewReader(c.data)
+		c.br = bufio.NewReaderSize(c.r, c.r.Len())
+	} else {
+		c.r.Reset(c.data)
+		c.br.Reset(c.r)
+	}
+	if resp, neededDataLen, err := parseRESP(c.br); err != nil {
 		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
 			//数据还没收完，则重新copy一份内存保存数据，避免使用原先的[]byte导致覆盖
 			dataTmp := make([]byte, 0)
