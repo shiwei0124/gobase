@@ -193,7 +193,7 @@ func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
-	//c.Conn.(*net.TCPConn).SetNoDelay(false)
+	c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
 	go c.writeLoop()
 }
