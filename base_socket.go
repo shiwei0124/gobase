@@ -147,7 +147,7 @@ func (c *BaseTCPStream) readLoop() {
 			fmt.Println("peek err, %s", err.Error())
 		}
 		dataSize := len(data)
-		if err != nil {
+		if err != nil && err != bufio.ErrBufferFull {
 			if c.IBaseTCPStreamHandle != nil {
 				c.IBaseTCPStreamHandle.OnException(err)
 			}
