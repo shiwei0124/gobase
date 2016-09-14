@@ -179,8 +179,12 @@ func (c *BaseTCPStream) write(data []byte) {
 		}
 	} else {
 		c.writeEmptyWait.Done()
-		//c.writer.Flush()
-		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+		//Flush不能删除，否则会卡住
+		if err := c.writer.Flush(); err != nil {
+			c.IBaseTCPStreamHandle.OnException(err)
+		} else {
+			c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+		}
 	}
 }
 
