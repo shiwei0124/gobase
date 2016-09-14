@@ -3,7 +3,6 @@ package gobase
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -139,17 +138,10 @@ func (c *BaseTCPStream) Flush() {
 }
 
 func (c *BaseTCPStream) readLoop() {
-	//p := make([]byte, SOCKET_READ_BUFFER_SIZE)
+	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
-		//n, err := c.reader.Read(p)
-		data, err := c.reader.Peek(int(SOCKET_READ_BUFFER_SIZE))
+		n, err := c.reader.Read(p)
 		if err != nil {
-			fmt.Println("peek err, ", len(data), err.Error())
-		} else {
-			fmt.Println("peek ", len(data))
-		}
-		dataSize := len(data)
-		if err != nil && err != bufio.ErrBufferFull {
 			if c.IBaseTCPStreamHandle != nil {
 				c.IBaseTCPStreamHandle.OnException(err)
 			}
@@ -158,13 +150,7 @@ func (c *BaseTCPStream) readLoop() {
 			//log.Critical("read bytes num: %d", n)
 		}
 		if c.IBaseTCPStreamHandle != nil {
-			c.IBaseTCPStreamHandle.OnRead(data)
-		}
-		n, err := c.reader.Discard(dataSize)
-		if err != nil {
-			fmt.Println("discard err, %d, %s.", n, err.Error())
-		} else {
-			fmt.Println("discard %d", n)
+			c.IBaseTCPStreamHandle.OnRead(p[:n])
 		}
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}

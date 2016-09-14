@@ -1,6 +1,8 @@
 package gobase
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"testing"
 )
@@ -27,5 +29,16 @@ func Test_ParseRedis(b *testing.T) {
 }
 
 func Test_ParseLargeRESP(b *testing.T) {
+	a := "11aadccccddddd?"
+	c := bytes.NewReader([]byte(a))
+	d := bufio.NewReaderSize(c, 3)
+	fmt.Println(d.Buffered())
+	fmt.Println(d.ReadSlice('?'))
+	fmt.Println(d.Peek(5))
+	//fmt.Println(d.Discard(5))
+	p := make([]byte, 2)
+	fmt.Println(d.Read(p))
+
+	fmt.Println(d.Peek(5))
 
 }
