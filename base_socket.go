@@ -190,8 +190,8 @@ func (c *BaseTCPStream) write(data []byte) {
 
 func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
-	c.reader = bufio.NewReaderSize(c.Conn, 32*1024)
-	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
+	c.reader = bufio.NewReaderSize(c.Conn, 5*1024)
+	c.writer = bufio.NewWriterSize(c.Conn, 5*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
@@ -640,8 +640,8 @@ func (c *BaseUnixStream) write(data []byte) {
 
 func (c *BaseUnixStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
-	c.reader = bufio.NewReaderSize(c.Conn, 32*1024)
-	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
+	c.reader = bufio.NewReaderSize(c.Conn, 10*1024)
+	c.writer = bufio.NewWriterSize(c.Conn, 10*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
