@@ -119,8 +119,8 @@ func (c *BaseTCPStream) Close() {
 func (c *BaseTCPStream) Write(data []byte) {
 	if c.closed != true {
 		//c.writeEmptyWait.Add(1)
-		c.writeChan <- true
 		c.writer.Write(data)
+		c.writeChan <- true
 	}
 }
 
