@@ -83,9 +83,9 @@ func (h *BaseTCPClientHandle) OnConnect(bConnected bool) {
 
 type BaseTCPStream struct {
 	net.Conn
-	deadLine              time.Duration //unit: second
-	reader                *bufio.Reader
-	writer                *bufio.Writer
+	deadLine time.Duration //unit: second
+	//reader                *bufio.Reader
+	//writer                *bufio.Writer
 	writeChan             chan []byte
 	writtingLoopCloseChan chan bool
 	closed                bool
@@ -140,7 +140,7 @@ func (c *BaseTCPStream) Flush() {
 func (c *BaseTCPStream) readLoop() {
 	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
-		n, err := c.reader.Read(p)
+		n, err := c.Conn.Read(p)
 		if err != nil {
 			if c.IBaseTCPStreamHandle != nil {
 				c.IBaseTCPStreamHandle.OnException(err)
@@ -172,7 +172,7 @@ exit1:
 
 func (c *BaseTCPStream) write(data []byte) {
 	//c.Conn.Write(data)
-	if _, err := c.writer.Write(data); err != nil {
+	if _, err := c.Conn.Write(data); err != nil {
 		c.writeEmptyWait.Done()
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnException(err)
@@ -180,18 +180,18 @@ func (c *BaseTCPStream) write(data []byte) {
 	} else {
 		c.writeEmptyWait.Done()
 		//Flush不能删除，否则会卡住
-		if err := c.writer.Flush(); err != nil {
-			c.IBaseTCPStreamHandle.OnException(err)
-		} else {
-			c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
-		}
+		//if err := c.writer.Flush(); err != nil {
+		//	c.IBaseTCPStreamHandle.OnException(err)
+		//} else {
+		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+		//}
 	}
 }
 
 func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
-	c.reader = bufio.NewReaderSize(c.Conn, 5*1024)
-	c.writer = bufio.NewWriterSize(c.Conn, 5*1024)
+	//c.reader = bufio.NewReaderSize(c.Conn, 5*1024)
+	//c.writer = bufio.NewWriterSize(c.Conn, 5*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
