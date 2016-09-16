@@ -2,12 +2,12 @@
 package gobase
 
 import (
+	"bufio"
 	"errors"
 	"net/http"
 	"strings"
 	"sync"
 	//"fmt"
-	"bufio"
 	"net"
 	"strconv"
 	"time"
@@ -83,14 +83,13 @@ func (h *BaseTCPClientHandle) OnConnect(bConnected bool) {
 
 type BaseTCPStream struct {
 	net.Conn
-	deadLine time.Duration //unit: second
-	//reader                *bufio.Reader
-	//writer                *bufio.Writer
-	writeChan             chan []byte
+	deadLine              time.Duration //unit: second
+	writer                *bufio.Writer
+	writeChan             chan bool
 	writtingLoopCloseChan chan bool
 	closed                bool
 	IBaseTCPStreamHandle
-	writeEmptyWait *sync.WaitGroup
+	//writeEmptyWait *sync.WaitGroup
 }
 
 type BaseTCPSession struct {
@@ -119,8 +118,9 @@ func (c *BaseTCPStream) Close() {
 
 func (c *BaseTCPStream) Write(data []byte) {
 	if c.closed != true {
-		c.writeEmptyWait.Add(1)
-		c.writeChan <- data
+		//c.writeEmptyWait.Add(1)
+		c.writeChan <- true
+		c.writer.Write(data)
 	}
 }
 
@@ -132,9 +132,10 @@ func (c *BaseTCPStream) WriteString(data string) {
 }
 
 func (c *BaseTCPStream) Flush() {
-	if c.writeEmptyWait != nil {
-		c.writeEmptyWait.Wait()
-	}
+	//if c.writeEmptyWait != nil {
+	//	c.writeEmptyWait.Wait()
+	//}
+	c.writer.Flush()
 }
 
 func (c *BaseTCPStream) readLoop() {
@@ -160,8 +161,9 @@ func (c *BaseTCPStream) writeLoop() {
 exit1:
 	for {
 		select {
-		case data := <-c.writeChan:
-			c.write(data)
+		case _ = <-c.writeChan:
+			//c.write(data)
+			c.write()
 		case <-c.writtingLoopCloseChan:
 			//log.Trace("session writting chan stoped")
 			break exit1
@@ -170,32 +172,25 @@ exit1:
 	//log.Trace("writting loop stopped..")
 }
 
-func (c *BaseTCPStream) write(data []byte) {
-	//c.Conn.Write(data)
-	if _, err := c.Conn.Write(data); err != nil {
-		c.writeEmptyWait.Done()
+func (c *BaseTCPStream) write() {
+	if err := c.writer.Flush(); err != nil {
+		//c.writeEmptyWait.Done()
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnException(err)
 		}
 	} else {
-		c.writeEmptyWait.Done()
-		//Flush不能删除，否则会卡住
-		//if err := c.writer.Flush(); err != nil {
-		//	c.IBaseTCPStreamHandle.OnException(err)
-		//} else {
+		//c.writeEmptyWait.Done()
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
-		//}
 	}
 }
 
 func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
-	//c.reader = bufio.NewReaderSize(c.Conn, 5*1024)
-	//c.writer = bufio.NewWriterSize(c.Conn, 5*1024)
 	c.closed = false
-	c.writeChan = make(chan []byte, 10)
+	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
+	c.writeChan = make(chan bool, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
-	c.writeEmptyWait = &sync.WaitGroup{}
+	//c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
@@ -538,8 +533,6 @@ func (h *BaseUnixClientHandle) OnConnect(bConnected bool) {
 type BaseUnixStream struct {
 	net.Conn
 	deadLine              time.Duration //unit: second
-	reader                *bufio.Reader
-	writer                *bufio.Writer
 	writeChan             chan []byte
 	writtingLoopCloseChan chan bool
 	closed                bool
@@ -594,7 +587,7 @@ func (c *BaseUnixStream) Flush() {
 func (c *BaseUnixStream) readLoop() {
 	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
-		n, err := c.reader.Read(p)
+		n, err := c.Conn.Read(p)
 		if err != nil {
 			if c.IBaseUnixStreamHandle != nil {
 				c.IBaseUnixStreamHandle.OnException(err)
@@ -626,22 +619,19 @@ exit1:
 
 func (c *BaseUnixStream) write(data []byte) {
 	//c.Conn.Write(data)
-	if _, err := c.writer.Write(data); err != nil {
+	if _, err := c.Conn.Write(data); err != nil {
 		c.writeEmptyWait.Done()
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnException(err)
 		}
 	} else {
 		c.writeEmptyWait.Done()
-		c.writer.Flush()
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
 
 func (c *BaseUnixStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
-	c.reader = bufio.NewReaderSize(c.Conn, 10*1024)
-	c.writer = bufio.NewWriterSize(c.Conn, 10*1024)
 	c.closed = false
 	c.writeChan = make(chan []byte, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
