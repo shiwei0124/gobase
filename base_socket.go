@@ -4,6 +4,7 @@ package gobase
 import (
 	"bufio"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -119,8 +120,21 @@ func (c *BaseTCPStream) Close() {
 func (c *BaseTCPStream) Write(data []byte) {
 	if c.closed != true {
 		//c.writeEmptyWait.Add(1)
-		c.writer.Write(data)
-		c.writeChan <- true
+		if c.writer.Buffered() == 0 {
+			if n, err := c.Conn.Write(data); err != nil {
+				if c.IBaseTCPStreamHandle != nil {
+					c.IBaseTCPStreamHandle.OnException(err)
+				}
+			} else {
+				if n < len(data) {
+					c.writer.Write(data[n:])
+					c.writeChan <- true
+				}
+			}
+		} else {
+			c.writer.Write(data)
+			c.writeChan <- true
+		}
 	}
 }
 
@@ -173,14 +187,25 @@ exit1:
 }
 
 func (c *BaseTCPStream) write() {
-	if err := c.writer.Flush(); err != nil {
-		//c.writeEmptyWait.Done()
+	var err error
+	for {
+		if err2 := c.writer.Flush(); err2 != nil {
+			if err2 == io.ErrShortWrite {
+				continue
+			} else {
+				err = err2
+				break
+			}
+		}
+	}
+	if err != nil {
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnException(err)
 		}
 	} else {
 		//c.writeEmptyWait.Done()
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+
 	}
 }
 
