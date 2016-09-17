@@ -567,12 +567,15 @@ func (h *BaseUnixClientHandle) OnConnect(bConnected bool) {
 
 type BaseUnixStream struct {
 	net.Conn
-	deadLine              time.Duration //unit: second
-	writeChan             chan []byte
+	deadLine  time.Duration //unit: second
+	writer    *bufio.Writer
+	writeChan chan []byte
+	flushChan chan bool
+
 	writtingLoopCloseChan chan bool
 	closed                bool
 	IBaseUnixStreamHandle
-	writeEmptyWait *sync.WaitGroup
+	//writeEmptyWait *sync.WaitGroup
 }
 
 type BaseUnixSession struct {
@@ -601,8 +604,23 @@ func (c *BaseUnixStream) Close() {
 
 func (c *BaseUnixStream) Write(data []byte) {
 	if c.closed != true {
-		c.writeEmptyWait.Add(1)
-		c.writeChan <- data
+		if c.writer.Buffered() == 0 {
+			if n, err := c.Conn.Write(data); err != nil {
+				if c.IBaseUnixStreamHandle != nil {
+					c.IBaseUnixStreamHandle.OnException(err)
+				}
+			} else {
+				if n < len(data) {
+					//c.writeEmptyWait.Add(1)
+					c.writeChan <- data[n:]
+				} else {
+					c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+				}
+			}
+		} else {
+			//c.writeEmptyWait.Add(1)
+			c.writeChan <- data
+		}
 	}
 }
 
@@ -614,9 +632,9 @@ func (c *BaseUnixStream) WriteString(data string) {
 }
 
 func (c *BaseUnixStream) Flush() {
-	if c.writeEmptyWait != nil {
-		c.writeEmptyWait.Wait()
-	}
+	//if c.writeEmptyWait != nil {
+	//	c.writeEmptyWait.Wait()
+	//}
 }
 
 func (c *BaseUnixStream) readLoop() {
@@ -643,7 +661,9 @@ exit1:
 	for {
 		select {
 		case data := <-c.writeChan:
-			c.write(data)
+			c.writeBuffer(data)
+		case <-c.flushChan:
+			c.flush()
 		case <-c.writtingLoopCloseChan:
 			//log.Trace("session writting chan stoped")
 			break exit1
@@ -652,15 +672,32 @@ exit1:
 	//log.Trace("writting loop stopped..")
 }
 
-func (c *BaseUnixStream) write(data []byte) {
-	//c.Conn.Write(data)
-	if _, err := c.Conn.Write(data); err != nil {
-		c.writeEmptyWait.Done()
+func (c *BaseUnixStream) activeFlush() {
+	if len(c.flushChan) == 0 {
+		c.flushChan <- true
+	}
+}
+
+func (c *BaseUnixStream) writeBuffer(data []byte) {
+	if _, err := c.writer.Write(data); err != nil {
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnException(err)
 		}
 	} else {
-		c.writeEmptyWait.Done()
+		c.activeFlush()
+	}
+}
+
+func (c *BaseUnixStream) flush() {
+	if err := c.writer.Flush(); err != nil {
+		if err == io.ErrShortWrite {
+			c.activeFlush()
+		} else {
+			if c.IBaseUnixStreamHandle != nil {
+				c.IBaseUnixStreamHandle.OnException(err)
+			}
+		}
+	} else {
 		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
@@ -668,9 +705,11 @@ func (c *BaseUnixStream) write(data []byte) {
 func (c *BaseUnixStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
 	c.closed = false
+	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.writeChan = make(chan []byte, 10)
+	c.flushChan = make(chan bool, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
-	c.writeEmptyWait = &sync.WaitGroup{}
+	//c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 	go c.readLoop()
