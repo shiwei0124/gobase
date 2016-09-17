@@ -177,7 +177,7 @@ exit1:
 	for {
 		select {
 		case data := <-c.writeChan:
-			c.write(data)
+			c.writeBuffer(data)
 		case <-c.flushChan:
 			c.flush()
 		case <-c.writtingLoopCloseChan:
@@ -188,38 +188,26 @@ exit1:
 	//log.Trace("writting loop stopped..")
 }
 
+func (c *BaseTCPStream) activeFlush() {
+	if len(c.flushChan) == 0 {
+		c.flushChan <- true
+	}
+}
+
 func (c *BaseTCPStream) writeBuffer(data []byte) {
 	if _, err := c.writer.Write(data); err != nil {
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnException(err)
 		}
 	} else {
-		c.flushChan <- true
-	}
-}
-
-func (c *BaseTCPStream) write(data []byte) {
-	if c.writer.Buffered() == 0 {
-		if n, err := c.Conn.Write(data); err != nil {
-			if c.IBaseTCPStreamHandle != nil {
-				c.IBaseTCPStreamHandle.OnException(err)
-			}
-		} else {
-			if n < len(data) {
-				c.writeBuffer(data[n:])
-			} else {
-				c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
-			}
-		}
-	} else {
-		c.writeBuffer(data)
+		c.activeFlush()
 	}
 }
 
 func (c *BaseTCPStream) flush() {
 	if err := c.writer.Flush(); err != nil {
 		if err == io.ErrShortWrite {
-			c.flushChan <- true
+			c.activeFlush()
 		} else {
 			if c.IBaseTCPStreamHandle != nil {
 				c.IBaseTCPStreamHandle.OnException(err)
