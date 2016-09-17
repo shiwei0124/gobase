@@ -30,6 +30,9 @@ func Test_ParseRedis(b *testing.T) {
 
 func Test_ParseLargeRESP(b *testing.T) {
 	a := "11aadccccddddd?"
+	var g []byte
+	g = append(g, a...)
+	fmt.Println(g, "ddddddd")
 	c := bytes.NewReader([]byte(a))
 	d := bufio.NewReaderSize(c, 3)
 	fmt.Println(d.Buffered())

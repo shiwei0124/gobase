@@ -86,7 +86,8 @@ type BaseTCPStream struct {
 	net.Conn
 	deadLine              time.Duration //unit: second
 	writer                *bufio.Writer
-	writeChan             chan bool
+	writeChan             chan []byte
+	flushChan             chan bool
 	writtingLoopCloseChan chan bool
 	closed                bool
 	IBaseTCPStreamHandle
@@ -119,7 +120,6 @@ func (c *BaseTCPStream) Close() {
 
 func (c *BaseTCPStream) Write(data []byte) {
 	if c.closed != true {
-		//c.writeEmptyWait.Add(1)
 		if c.writer.Buffered() == 0 {
 			if n, err := c.Conn.Write(data); err != nil {
 				if c.IBaseTCPStreamHandle != nil {
@@ -127,13 +127,15 @@ func (c *BaseTCPStream) Write(data []byte) {
 				}
 			} else {
 				if n < len(data) {
-					c.writer.Write(data[n:])
-					c.writeChan <- true
+					//c.writeEmptyWait.Add(1)
+					c.writeChan <- data[n:]
+				} else {
+					c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 				}
 			}
 		} else {
-			c.writer.Write(data)
-			c.writeChan <- true
+			//c.writeEmptyWait.Add(1)
+			c.writeChan <- data
 		}
 	}
 }
@@ -149,7 +151,6 @@ func (c *BaseTCPStream) Flush() {
 	//if c.writeEmptyWait != nil {
 	//	c.writeEmptyWait.Wait()
 	//}
-	c.writer.Flush()
 }
 
 func (c *BaseTCPStream) readLoop() {
@@ -175,9 +176,10 @@ func (c *BaseTCPStream) writeLoop() {
 exit1:
 	for {
 		select {
-		case _ = <-c.writeChan:
-			//c.write(data)
-			c.write()
+		case data := <-c.writeChan:
+			c.write(data)
+		case <-c.flushChan:
+			c.flush()
 		case <-c.writtingLoopCloseChan:
 			//log.Trace("session writting chan stoped")
 			break exit1
@@ -186,26 +188,45 @@ exit1:
 	//log.Trace("writting loop stopped..")
 }
 
-func (c *BaseTCPStream) write() {
-	var err error
-	for {
-		if err2 := c.writer.Flush(); err2 != nil {
-			if err2 == io.ErrShortWrite {
-				continue
-			} else {
-				err = err2
-				break
-			}
-		}
-	}
-	if err != nil {
+func (c *BaseTCPStream) writeBuffer(data []byte) {
+	if _, err := c.writer.Write(data); err != nil {
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnException(err)
 		}
 	} else {
-		//c.writeEmptyWait.Done()
-		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+		c.flushChan <- true
+	}
+}
 
+func (c *BaseTCPStream) write(data []byte) {
+	if c.writer.Buffered() == 0 {
+		if n, err := c.Conn.Write(data); err != nil {
+			if c.IBaseTCPStreamHandle != nil {
+				c.IBaseTCPStreamHandle.OnException(err)
+			}
+		} else {
+			if n < len(data) {
+				c.writeBuffer(data[n:])
+			} else {
+				c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+			}
+		}
+	} else {
+		c.writeBuffer(data)
+	}
+}
+
+func (c *BaseTCPStream) flush() {
+	if err := c.writer.Flush(); err != nil {
+		if err == io.ErrShortWrite {
+			c.flushChan <- true
+		} else {
+			if c.IBaseTCPStreamHandle != nil {
+				c.IBaseTCPStreamHandle.OnException(err)
+			}
+		}
+	} else {
+		c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	}
 }
 
@@ -213,7 +234,8 @@ func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
 	c.closed = false
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
-	c.writeChan = make(chan bool, 10)
+	c.writeChan = make(chan []byte, 10)
+	c.flushChan = make(chan bool, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	//c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
