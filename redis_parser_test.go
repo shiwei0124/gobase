@@ -15,7 +15,7 @@ func Test_ParseRedis(b *testing.T) {
 	data2 := make([]byte, 0)
 	data2 = append(data2, data...)
 	fmt.Println("ddddd")
-	n := 1000000
+	n := 1
 	for i := 0; i < n; i++ {
 		cmd := NewRedisCmd([]byte(data))
 		if _, err := cmd.ParseRequest(); err != nil {
@@ -26,6 +26,30 @@ func Test_ParseRedis(b *testing.T) {
 		}
 	}
 	fmt.Println("aaa")
+}
+
+func Test_ParseRedisAppend(b *testing.T) {
+	data := "*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Foo\r\n$6\r\nfoobar\r\n"
+	data2 := []byte(data)
+	fmt.Println("Test_ParseRedisAppend")
+	cmd := NewRedisCmd(data2[:len(data2)-5])
+	if _, err := cmd.ParseRequest(); err != nil {
+		fmt.Println(err)
+		if err == ErrUnexpectedRESPEOF {
+			fmt.Printf("parse req failed, %s\n", string(cmd.Data()))
+			if cmd.AppendData(data2[len(data2)-5:]) {
+				fmt.Printf("append data true, %s", string(cmd.Data()))
+				fmt.Println(cmd.ParseRequest())
+			} else {
+				fmt.Printf("append data false")
+			}
+		}
+	} else {
+		//printRESP(respData)
+		//fmt.Println(type(a))
+		fmt.Println("yes")
+	}
+
 }
 
 func Test_ParseLargeRESP(b *testing.T) {

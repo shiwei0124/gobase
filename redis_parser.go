@@ -78,7 +78,10 @@ func (c *RedisCmd) parseRESP() (interface{}, error) {
 		c.br = bufio.NewReaderSize(c.r, c.r.Len())
 	} else {
 		c.r.Reset(c.data)
-		c.br.Reset(c.r)
+		//reset并不能扩充buffer的大小，所以用buffered并不能得出剩余数据的大小，而仅仅是buff里面还未读出来的，可能还有部分
+		//数据在c.r中
+		//c.br.Reset(c.r)
+		c.br = bufio.NewReaderSize(c.r, c.r.Len())
 	}
 	if resp, neededDataLen, err := parseRESP(c.br); err != nil {
 		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
