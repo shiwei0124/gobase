@@ -135,8 +135,9 @@ func (c *BaseTCPStream) Flush() {
 }
 
 func (c *BaseTCPStream) readLoop() {
-	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
+		//此处对于每一次read都是独立的内存，对于应用层可能更通用一些，即使会消耗部分性能
+		p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 		n, err := c.Conn.Read(p)
 		if err != nil {
 			if c.IBaseTCPStreamHandle != nil {
@@ -637,8 +638,8 @@ func (c *BaseUnixStream) Flush() {
 }
 
 func (c *BaseUnixStream) readLoop() {
-	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
+		p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 		n, err := c.Conn.Read(p)
 		if err != nil {
 			if c.IBaseUnixStreamHandle != nil {
