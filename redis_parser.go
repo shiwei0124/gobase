@@ -85,10 +85,7 @@ func (c *RedisCmd) parseRESP() (interface{}, error) {
 	}
 	if resp, neededDataLen, err := parseRESP(c.br); err != nil {
 		if err == ErrUnexpectedRESPEOF || err == ErrBufferFullRESP {
-			//数据还没收完，则重新copy一份内存保存数据，避免使用原先的[]byte导致覆盖
-			dataTmp := make([]byte, 0)
-			dataTmp = append(dataTmp, c.data...)
-			c.data = dataTmp
+			//数据还没收完
 		}
 		c.neededDataLen = neededDataLen
 		return nil, err
