@@ -576,10 +576,11 @@ func (h *BaseUnixClientHandle) OnConnect(bConnected bool) {
 
 type BaseUnixStream struct {
 	net.Conn
-	deadLine  time.Duration //unit: second
-	writer    *bufio.Writer
-	writeChan chan []byte
-	flushChan chan bool
+	deadLine      time.Duration //unit: second
+	writer        *bufio.Writer
+	writeChan     chan []byte
+	writeChanSize int
+	flushChan     chan bool
 
 	writtingLoopCloseChan chan bool
 	closed                bool
@@ -611,26 +612,17 @@ func (c *BaseUnixStream) Close() {
 	}
 }
 
-func (c *BaseUnixStream) Write(data []byte) {
+func (c *BaseUnixStream) Write(data []byte) error {
 	if c.closed != true {
-		if c.writer.Buffered() == 0 {
-			if n, err := c.Conn.Write(data); err != nil {
-				if c.IBaseUnixStreamHandle != nil {
-					c.IBaseUnixStreamHandle.OnException(err)
-				}
-			} else {
-				if n < len(data) {
-					//c.writeEmptyWait.Add(1)
-					c.writeChan <- data[n:]
-				} else {
-					c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
-				}
-			}
+		if len(c.writeChan) == c.writeChanSize {
+			err := errors.New("write chan overflow, discard data")
+			return err
 		} else {
-			//c.writeEmptyWait.Add(1)
 			c.writeChan <- data
+			return nil
 		}
 	}
+	return nil
 }
 
 func (c *BaseUnixStream) WriteString(data string) {
@@ -670,7 +662,7 @@ exit1:
 	for {
 		select {
 		case data := <-c.writeChan:
-			c.writeBuffer(data)
+			c.write(data)
 		case <-c.flushChan:
 			c.flush()
 		case <-c.writtingLoopCloseChan:
@@ -679,6 +671,24 @@ exit1:
 		}
 	}
 	//log.Trace("writting loop stopped..")
+}
+
+func (c *BaseUnixStream) write(data []byte) {
+	if c.writer.Buffered() == 0 {
+		if n, err := c.Conn.Write(data); err != nil {
+			if c.IBaseUnixStreamHandle != nil {
+				c.IBaseUnixStreamHandle.OnException(err)
+			}
+		} else {
+			if n < len(data) {
+				c.writeBuffer(data[n:])
+			} else {
+				c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
+			}
+		}
+	} else {
+		c.writeBuffer(data)
+	}
 }
 
 func (c *BaseUnixStream) activeFlush() {
@@ -715,7 +725,8 @@ func (c *BaseUnixStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
 	c.closed = false
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
-	c.writeChan = make(chan []byte, 10)
+	c.writeChanSize = 3000
+	c.writeChan = make(chan []byte, c.writeChanSize)
 	c.flushChan = make(chan bool, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	//c.writeEmptyWait = &sync.WaitGroup{}
