@@ -87,6 +87,7 @@ type BaseTCPStream struct {
 	deadLine              time.Duration //unit: second
 	writer                *bufio.Writer
 	writeChan             chan []byte
+	writeChanSize         int
 	flushChan             chan bool
 	writtingLoopCloseChan chan bool
 	closed                bool
@@ -118,10 +119,17 @@ func (c *BaseTCPStream) Close() {
 	}
 }
 
-func (c *BaseTCPStream) Write(data []byte) {
+func (c *BaseTCPStream) Write(data []byte) error {
 	if c.closed != true {
-		c.writeChan <- data
+		if len(c.writeChan) == c.writeChanSize {
+			err := errors.New("write chan overflow, discard data")
+			return err
+		} else {
+			c.writeChan <- data
+			return nil
+		}
 	}
+	return nil
 }
 
 func (c *BaseTCPStream) WriteString(data string) {
@@ -222,7 +230,8 @@ func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
 	c.closed = false
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
-	c.writeChan = make(chan []byte, 10)
+	c.writeChanSize = 3000
+	c.writeChan = make(chan []byte, c.writeChanSize)
 	c.flushChan = make(chan bool, 10)
 	c.writtingLoopCloseChan = make(chan bool, 1)
 	//c.writeEmptyWait = &sync.WaitGroup{}
