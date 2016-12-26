@@ -21,6 +21,11 @@ const (
 	DEFAULT_CONNECT_TIMEOUT = 15
 )
 
+const (
+	SOCKET_OPEN   = 0
+	SOCKET_CLOSED = 1
+)
+
 var SOCKET_READ_BUFFER_SIZE int64 //一次读数据的大小
 
 func init() {
@@ -90,7 +95,7 @@ type BaseTCPStream struct {
 	writeChanSize         int
 	flushChan             chan bool
 	writtingLoopCloseChan chan bool
-	closed                bool
+	closed                AtomicInt32 //这里使用原子操作，因为在 write data的时候对方关闭连接，会导致read 和 write都会抛异常出来
 	IBaseTCPStreamHandle
 	//writeEmptyWait *sync.WaitGroup
 }
@@ -109,9 +114,10 @@ func (c *BaseTCPStream) SetDeadLine(deadLine time.Duration) {
 }
 
 func (c *BaseTCPStream) Close() {
-	if c.closed != true {
+	if c.closed.CompareAndSwap(SOCKET_OPEN, SOCKET_CLOSED) {
+		//if c.closed != true {
 		c.Conn.Close()
-		c.closed = true
+		//c.closed = true
 		c.writtingLoopCloseChan <- true
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnClose()
@@ -120,7 +126,7 @@ func (c *BaseTCPStream) Close() {
 }
 
 func (c *BaseTCPStream) Write(data []byte) error {
-	if c.closed != true {
+	if c.closed.Get() == SOCKET_OPEN {
 		if len(c.writeChan) == c.writeChanSize {
 			err := errors.New("write chan overflow, discard data")
 			return err
@@ -133,7 +139,7 @@ func (c *BaseTCPStream) Write(data []byte) error {
 }
 
 func (c *BaseTCPStream) WriteString(data string) {
-	if c.closed != true {
+	if c.closed.Get() == SOCKET_OPEN {
 		dataBytes := []byte(data)
 		c.Write(dataBytes)
 	}
@@ -228,7 +234,7 @@ func (c *BaseTCPStream) flush() {
 
 func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
-	c.closed = false
+	c.closed.Set(SOCKET_OPEN)
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.writeChanSize = 3000
 	c.writeChan = make(chan []byte, c.writeChanSize)
@@ -272,7 +278,7 @@ func (c *BaseTCPClient) ConnectByAddr(addr string) error {
 
 //addr: "127.0.0.1:80"
 func (c *BaseTCPClient) ConnectByAddrTimeOut(addr string, timeOut time.Duration, deadLine time.Duration) error {
-	c.closed = true
+	c.closed.Set(SOCKET_CLOSED)
 	c.RemoteAddress = addr
 	//阻塞
 	conn, err := net.DialTimeout("tcp", addr, timeOut*time.Second)
@@ -318,7 +324,7 @@ func (h *BaseTCPServerHandle) OnException(err error) {
 
 type BaseTCPServer struct {
 	net.Listener
-	closed bool
+	closed AtomicInt32
 	IBaseTCPServerHandle
 }
 
@@ -360,9 +366,9 @@ func (s *BaseTCPServer) acceptLoop() {
 }
 
 func (s *BaseTCPServer) Close() {
-	if s.closed != true {
+	if s.closed.CompareAndSwap(SOCKET_OPEN, SOCKET_CLOSED) {
 		s.Listener.Close()
-		s.closed = true
+		//s.closed = true
 		if s.IBaseTCPServerHandle != nil {
 			s.IBaseTCPServerHandle.OnClose()
 		}
@@ -385,7 +391,7 @@ type UDPMsg struct {
 type BaseUDPStream struct {
 	net.Conn
 	IBaseUDPStreamHandle
-	closed                bool
+	closed                AtomicInt32
 	writeChan             chan *UDPMsg
 	writtingLoopCloseChan chan bool
 	writeEmptyWait        *sync.WaitGroup
@@ -483,11 +489,10 @@ func (s *BaseUDPStream) Flush() {
 }
 
 func (s *BaseUDPStream) Close() {
-	if s.closed != true {
+	if s.closed.CompareAndSwap(SOCKET_OPEN, SOCKET_CLOSED) {
 		s.Conn.Close()
-		s.closed = true
+		//s.closed = true
 		s.writtingLoopCloseChan <- true
-
 		if s.IBaseUDPStreamHandle != nil {
 			s.IBaseUDPStreamHandle.OnClose()
 		}
@@ -583,7 +588,7 @@ type BaseUnixStream struct {
 	flushChan     chan bool
 
 	writtingLoopCloseChan chan bool
-	closed                bool
+	closed                AtomicInt32
 	IBaseUnixStreamHandle
 	//writeEmptyWait *sync.WaitGroup
 }
@@ -602,9 +607,9 @@ func (c *BaseUnixStream) SetDeadLine(deadLine time.Duration) {
 }
 
 func (c *BaseUnixStream) Close() {
-	if c.closed != true {
+	if c.closed.CompareAndSwap(SOCKET_OPEN, SOCKET_CLOSED) {
 		c.Conn.Close()
-		c.closed = true
+		//c.closed = true
 		c.writtingLoopCloseChan <- true
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnClose()
@@ -613,7 +618,7 @@ func (c *BaseUnixStream) Close() {
 }
 
 func (c *BaseUnixStream) Write(data []byte) error {
-	if c.closed != true {
+	if c.closed.Get() == SOCKET_OPEN {
 		if len(c.writeChan) == c.writeChanSize {
 			err := errors.New("write chan overflow, discard data")
 			return err
@@ -626,7 +631,7 @@ func (c *BaseUnixStream) Write(data []byte) error {
 }
 
 func (c *BaseUnixStream) WriteString(data string) {
-	if c.closed != true {
+	if c.closed.Get() == SOCKET_CLOSED {
 		dataBytes := []byte(data)
 		c.Write(dataBytes)
 	}
@@ -723,7 +728,7 @@ func (c *BaseUnixStream) flush() {
 
 func (c *BaseUnixStream) start(deadLine time.Duration) {
 	c.deadLine = deadLine
-	c.closed = false
+	c.closed.Set(SOCKET_OPEN)
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.writeChanSize = 3000
 	c.writeChan = make(chan []byte, c.writeChanSize)
@@ -756,7 +761,7 @@ func (c *BaseUnixClient) ConnectByAddr(addr string) error {
 }
 
 func (c *BaseUnixClient) ConnectByAddrWithDeadLine(addr string, deadLine time.Duration) error {
-	c.closed = true
+	c.closed.Set(SOCKET_CLOSED)
 	c.RemoteAddress = addr
 	unixAddr, err := net.ResolveUnixAddr("unix", addr)
 	if err != nil {
