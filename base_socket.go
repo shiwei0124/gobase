@@ -118,7 +118,6 @@ func (c *BaseTCPStream) Close() {
 		c.Conn.Close()
 		close(c.writtingLoopCloseChan)
 
-		c.wg.Wait()
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnClose()
 		}
@@ -233,6 +232,12 @@ func (c *BaseTCPStream) flush() {
 }
 
 func (c *BaseTCPStream) start(deadLine time.Duration) {
+	if c.wg != nil {
+		c.wg.Wait()
+	} else {
+		c.wg = &sync.WaitGroup{}
+	}
+
 	c.deadLine = deadLine
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.writeChanSize = 3000
@@ -242,7 +247,7 @@ func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
 
-	c.wg = &sync.WaitGroup{}
+	c.closed.Set(SOCKET_OPEN)
 
 	c.wg.Add(1)
 	go c.readLoop()
@@ -250,7 +255,6 @@ func (c *BaseTCPStream) start(deadLine time.Duration) {
 	c.wg.Add(1)
 	go c.writeLoop()
 
-	c.closed.Set(SOCKET_OPEN)
 }
 
 /// TCP Session
@@ -293,12 +297,18 @@ func (c *BaseTCPClient) ConnectByAddrTimeOut(addr string, timeOut time.Duration,
 		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(false)
 		return err
 	}
+
+	//wait until readLoop and writeLoop exit as c.Conn may used by them
+	if c.wg != nil {
+		c.wg.Wait()
+	}
 	c.Conn = conn
+
+	c.start(deadLine)
 
 	if _, ok := c.IBaseTCPStreamHandle.(IBaseTCPClientHandle); ok {
 		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(true)
 	}
-	c.start(deadLine)
 	return nil
 }
 
