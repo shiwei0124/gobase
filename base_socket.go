@@ -22,8 +22,8 @@ const (
 )
 
 const (
-	SOCKET_OPEN   = 0
-	SOCKET_CLOSED = 1
+	SOCKET_OPEN   = 1
+	SOCKET_CLOSED = 0
 )
 
 var SOCKET_READ_BUFFER_SIZE int64 //一次读数据的大小
@@ -94,10 +94,10 @@ type BaseTCPStream struct {
 	writeChan             chan []byte
 	writeChanSize         int
 	flushChan             chan bool
-	writtingLoopCloseChan chan bool
+	writtingLoopCloseChan chan struct{}
 	closed                AtomicInt32 //这里使用原子操作，因为在 write data的时候对方关闭连接，会导致read 和 write都会抛异常出来
+	wg                    *sync.WaitGroup
 	IBaseTCPStreamHandle
-	//writeEmptyWait *sync.WaitGroup
 }
 
 type BaseTCPSession struct {
@@ -115,10 +115,9 @@ func (c *BaseTCPStream) SetDeadLine(deadLine time.Duration) {
 
 func (c *BaseTCPStream) Close() {
 	if c.closed.CompareAndSwap(SOCKET_OPEN, SOCKET_CLOSED) {
-		//if c.closed != true {
 		c.Conn.Close()
-		//c.closed = true
-		c.writtingLoopCloseChan <- true
+		close(c.writtingLoopCloseChan)
+
 		if c.IBaseTCPStreamHandle != nil {
 			c.IBaseTCPStreamHandle.OnClose()
 		}
@@ -150,6 +149,7 @@ func (c *BaseTCPStream) Flush() {
 
 func (c *BaseTCPStream) readLoop() {
 	//此处对于每一次read都是独立的内存，对于应用层可能更通用一些，即使会消耗部分性能
+	defer c.wg.Done()
 	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
 		n, err := c.Conn.Read(p)
@@ -169,6 +169,7 @@ func (c *BaseTCPStream) readLoop() {
 }
 
 func (c *BaseTCPStream) writeLoop() {
+	defer c.wg.Done()
 exit1:
 	for {
 		select {
@@ -177,11 +178,9 @@ exit1:
 		case <-c.flushChan:
 			c.flush()
 		case <-c.writtingLoopCloseChan:
-			//log.Trace("session writting chan stoped")
 			break exit1
 		}
 	}
-	//log.Trace("writting loop stopped..")
 }
 
 func (c *BaseTCPStream) activeFlush() {
@@ -233,18 +232,29 @@ func (c *BaseTCPStream) flush() {
 }
 
 func (c *BaseTCPStream) start(deadLine time.Duration) {
+	if c.wg != nil {
+		c.wg.Wait()
+	} else {
+		c.wg = &sync.WaitGroup{}
+	}
+
 	c.deadLine = deadLine
-	c.closed.Set(SOCKET_OPEN)
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.writeChanSize = 3000
 	c.writeChan = make(chan []byte, c.writeChanSize)
 	c.flushChan = make(chan bool, 10)
-	c.writtingLoopCloseChan = make(chan bool, 1)
-	//c.writeEmptyWait = &sync.WaitGroup{}
+	c.writtingLoopCloseChan = make(chan struct{})
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
+
+	c.closed.Set(SOCKET_OPEN)
+
+	c.wg.Add(1)
 	go c.readLoop()
+
+	c.wg.Add(1)
 	go c.writeLoop()
+
 }
 
 /// TCP Session
@@ -287,12 +297,18 @@ func (c *BaseTCPClient) ConnectByAddrTimeOut(addr string, timeOut time.Duration,
 		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(false)
 		return err
 	}
+
+	//wait until readLoop and writeLoop exit as c.Conn may used by them
+	if c.wg != nil {
+		c.wg.Wait()
+	}
 	c.Conn = conn
+
+	c.start(deadLine)
 
 	if _, ok := c.IBaseTCPStreamHandle.(IBaseTCPClientHandle); ok {
 		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(true)
 	}
-	c.start(deadLine)
 	return nil
 }
 
@@ -587,10 +603,10 @@ type BaseUnixStream struct {
 	writeChanSize int
 	flushChan     chan bool
 
-	writtingLoopCloseChan chan bool
+	writtingLoopCloseChan chan struct{}
 	closed                AtomicInt32
+	wg                    *sync.WaitGroup
 	IBaseUnixStreamHandle
-	//writeEmptyWait *sync.WaitGroup
 }
 
 type BaseUnixSession struct {
@@ -609,8 +625,7 @@ func (c *BaseUnixStream) SetDeadLine(deadLine time.Duration) {
 func (c *BaseUnixStream) Close() {
 	if c.closed.CompareAndSwap(SOCKET_OPEN, SOCKET_CLOSED) {
 		c.Conn.Close()
-		//c.closed = true
-		c.writtingLoopCloseChan <- true
+		close(c.writtingLoopCloseChan)
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnClose()
 		}
@@ -644,6 +659,7 @@ func (c *BaseUnixStream) Flush() {
 }
 
 func (c *BaseUnixStream) readLoop() {
+	defer c.wg.Done()
 	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
 		n, err := c.Conn.Read(p)
@@ -663,6 +679,7 @@ func (c *BaseUnixStream) readLoop() {
 }
 
 func (c *BaseUnixStream) writeLoop() {
+	defer c.wg.Done()
 exit1:
 	for {
 		select {
@@ -727,17 +744,27 @@ func (c *BaseUnixStream) flush() {
 }
 
 func (c *BaseUnixStream) start(deadLine time.Duration) {
+	if c.wg != nil {
+		c.wg.Wait()
+	} else {
+		c.wg = &sync.WaitGroup{}
+	}
 	c.deadLine = deadLine
-	c.closed.Set(SOCKET_OPEN)
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.writeChanSize = 3000
 	c.writeChan = make(chan []byte, c.writeChanSize)
 	c.flushChan = make(chan bool, 10)
-	c.writtingLoopCloseChan = make(chan bool, 1)
+	c.writtingLoopCloseChan = make(chan struct{})
 	//c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
+
+	c.closed.Set(SOCKET_OPEN)
+
+	c.wg.Add(1)
 	go c.readLoop()
+
+	c.wg.Add(1)
 	go c.writeLoop()
 }
 
@@ -776,12 +803,18 @@ func (c *BaseUnixClient) ConnectByAddrWithDeadLine(addr string, deadLine time.Du
 		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnConnect(false)
 		return err
 	}
+
+	//wait until readLoop and writeLoop exit as c.Conn may used by them
+	if c.wg != nil {
+		c.wg.Wait()
+	}
 	c.Conn = conn
+
+	c.start(deadLine)
 
 	if _, ok := c.IBaseUnixStreamHandle.(IBaseUnixClientHandle); ok {
 		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnConnect(true)
 	}
-	c.start(deadLine)
 	return nil
 }
 
