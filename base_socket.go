@@ -603,10 +603,10 @@ type BaseUnixStream struct {
 	writeChanSize int
 	flushChan     chan bool
 
-	writtingLoopCloseChan chan bool
+	writtingLoopCloseChan chan struct{}
 	closed                AtomicInt32
+	wg                    *sync.WaitGroup
 	IBaseUnixStreamHandle
-	//writeEmptyWait *sync.WaitGroup
 }
 
 type BaseUnixSession struct {
@@ -625,8 +625,7 @@ func (c *BaseUnixStream) SetDeadLine(deadLine time.Duration) {
 func (c *BaseUnixStream) Close() {
 	if c.closed.CompareAndSwap(SOCKET_OPEN, SOCKET_CLOSED) {
 		c.Conn.Close()
-		//c.closed = true
-		c.writtingLoopCloseChan <- true
+		close(c.writtingLoopCloseChan)
 		if c.IBaseUnixStreamHandle != nil {
 			c.IBaseUnixStreamHandle.OnClose()
 		}
@@ -660,6 +659,7 @@ func (c *BaseUnixStream) Flush() {
 }
 
 func (c *BaseUnixStream) readLoop() {
+	defer c.wg.Done()
 	p := make([]byte, SOCKET_READ_BUFFER_SIZE)
 	for {
 		n, err := c.Conn.Read(p)
@@ -679,6 +679,7 @@ func (c *BaseUnixStream) readLoop() {
 }
 
 func (c *BaseUnixStream) writeLoop() {
+	defer c.wg.Done()
 exit1:
 	for {
 		select {
@@ -743,17 +744,27 @@ func (c *BaseUnixStream) flush() {
 }
 
 func (c *BaseUnixStream) start(deadLine time.Duration) {
+	if c.wg != nil {
+		c.wg.Wait()
+	} else {
+		c.wg = &sync.WaitGroup{}
+	}
 	c.deadLine = deadLine
-	c.closed.Set(SOCKET_OPEN)
 	c.writer = bufio.NewWriterSize(c.Conn, 32*1024)
 	c.writeChanSize = 3000
 	c.writeChan = make(chan []byte, c.writeChanSize)
 	c.flushChan = make(chan bool, 10)
-	c.writtingLoopCloseChan = make(chan bool, 1)
+	c.writtingLoopCloseChan = make(chan struct{})
 	//c.writeEmptyWait = &sync.WaitGroup{}
 	c.Conn.SetDeadline(time.Now().Add(c.deadLine * time.Second))
 	//c.Conn.(*net.TCPConn).SetNoDelay(false)
+
+	c.closed.Set(SOCKET_OPEN)
+
+	c.wg.Add(1)
 	go c.readLoop()
+
+	c.wg.Add(1)
 	go c.writeLoop()
 }
 
@@ -792,12 +803,18 @@ func (c *BaseUnixClient) ConnectByAddrWithDeadLine(addr string, deadLine time.Du
 		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnConnect(false)
 		return err
 	}
+
+	//wait until readLoop and writeLoop exit as c.Conn may used by them
+	if c.wg != nil {
+		c.wg.Wait()
+	}
 	c.Conn = conn
+
+	c.start(deadLine)
 
 	if _, ok := c.IBaseUnixStreamHandle.(IBaseUnixClientHandle); ok {
 		c.IBaseUnixStreamHandle.(IBaseUnixClientHandle).OnConnect(true)
 	}
-	c.start(deadLine)
 	return nil
 }
 
