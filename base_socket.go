@@ -318,10 +318,11 @@ func (c *BaseTCPClient) ConnectByAddrTimeOutWithLocal(localIP string, localPort 
 	c.closed.Set(SOCKET_CLOSED)
 	c.RemoteAddress = addr
 
-	localAddr := &net.TCPAddr{
-		IP:   net.IP(localIP),
-		Port: localPort,
+	localAddr := &net.TCPAddr{Port: localPort}
+	if len(localIP) != 0 {
+		localAddr.IP = net.IP(localIP)
 	}
+
 	//阻塞
 	d := net.Dialer{
 		LocalAddr: localAddr,
