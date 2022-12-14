@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
 	//"fmt"
 	"net"
 	"strconv"
@@ -312,6 +313,41 @@ func (c *BaseTCPClient) ConnectByAddrTimeOut(addr string, timeOut time.Duration,
 	return nil
 }
 
+//addr: "127.0.0.1:80"
+func (c *BaseTCPClient) ConnectByAddrTimeOutWithLocal(localIP string, localPort int, addr string, timeout time.Duration, deadLine time.Duration) error {
+	c.closed.Set(SOCKET_CLOSED)
+	c.RemoteAddress = addr
+
+	localAddr := &net.TCPAddr{
+		IP:   net.IP(localIP),
+		Port: localPort,
+	}
+	//阻塞
+	d := net.Dialer{
+		LocalAddr: localAddr,
+		Timeout:   timeout * time.Second,
+	}
+	conn, err := d.Dial("tcp", addr)
+	if err != nil {
+		//log.Error("connect failed, err: ", err)
+		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(false)
+		return err
+	}
+
+	//wait until readLoop and writeLoop exit as c.Conn may used by them
+	if c.wg != nil {
+		c.wg.Wait()
+	}
+	c.Conn = conn
+
+	c.start(deadLine)
+
+	if _, ok := c.IBaseTCPStreamHandle.(IBaseTCPClientHandle); ok {
+		c.IBaseTCPStreamHandle.(IBaseTCPClientHandle).OnConnect(true)
+	}
+	return nil
+}
+
 ////   TCP SERVER
 type IBaseTCPServerHandle interface {
 	IBaseStreamHandle
@@ -352,6 +388,7 @@ func (s *BaseTCPServer) StartByAddr(addr string) (err error) {
 	} else {
 		//log.Info("server bind %s successed.", addr)
 	}
+
 	if s.IBaseTCPServerHandle != nil {
 		s.IBaseTCPServerHandle.OnStart()
 	}
