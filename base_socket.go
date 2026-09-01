@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"errors"
 	"io"
-	"net/http"
 	"strings"
 	"sync"
 
@@ -13,8 +12,6 @@ import (
 	"net"
 	"strconv"
 	"time"
-
-	mux "github.com/gorilla/mux"
 )
 
 const (
@@ -258,7 +255,7 @@ func (c *BaseTCPStream) start(deadLine time.Duration) {
 
 }
 
-/// TCP Session
+// / TCP Session
 func (c *BaseTCPSession) Start() {
 	c.StartByDeadLine(DEFAULT_DEADLINE)
 }
@@ -270,8 +267,8 @@ func (c *BaseTCPSession) StartByDeadLine(deadLine time.Duration) {
 	}
 }
 
-/// TCP Client
-//阻塞得到结果
+// / TCP Client
+// 阻塞得到结果
 func (c *BaseTCPClient) Connect(ip string, port int32) error {
 	addr := ip + ":" + strconv.FormatInt(int64(port), 10)
 	return c.ConnectByAddr(addr)
@@ -282,12 +279,12 @@ func (c *BaseTCPClient) ConnectTimeOut(ip string, port int32, timeOut time.Durat
 	return c.ConnectByAddrTimeOut(addr, timeOut, deadLine)
 }
 
-//addr: "127.0.0.1:80"
+// addr: "127.0.0.1:80"
 func (c *BaseTCPClient) ConnectByAddr(addr string) error {
 	return c.ConnectByAddrTimeOut(addr, DEFAULT_CONNECT_TIMEOUT, DEFAULT_DEADLINE)
 }
 
-//addr: "127.0.0.1:80"
+// addr: "127.0.0.1:80"
 func (c *BaseTCPClient) ConnectByAddrTimeOut(addr string, timeOut time.Duration, deadLine time.Duration) error {
 	c.closed.Set(SOCKET_CLOSED)
 	c.RemoteAddress = addr
@@ -313,7 +310,7 @@ func (c *BaseTCPClient) ConnectByAddrTimeOut(addr string, timeOut time.Duration,
 	return nil
 }
 
-//addr: "127.0.0.1:80"
+// addr: "127.0.0.1:80"
 func (c *BaseTCPClient) ConnectByAddrTimeOutWithLocal(localIP string, localPort int, addr string, timeout time.Duration, deadLine time.Duration) error {
 	c.closed.Set(SOCKET_CLOSED)
 	c.RemoteAddress = addr
@@ -349,7 +346,7 @@ func (c *BaseTCPClient) ConnectByAddrTimeOutWithLocal(localIP string, localPort 
 	return nil
 }
 
-////   TCP SERVER
+// //   TCP SERVER
 type IBaseTCPServerHandle interface {
 	IBaseStreamHandle
 	OnStart()
@@ -507,7 +504,7 @@ func (s *BaseUDPStream) readLoop() {
 	}
 }
 
-//udp的底层write有锁
+// udp的底层write有锁
 func (s *BaseUDPStream) writeLoop() {
 exit1:
 	for {
@@ -553,7 +550,7 @@ func (s *BaseUDPStream) Close() {
 	}
 }
 
-///  UDP Client
+// /  UDP Client
 type IBaseUDPClientHandle interface {
 	IBaseUDPStreamHandle
 }
@@ -577,7 +574,7 @@ type BaseUDPClient struct {
 	BaseUDPStream
 }
 
-///   UDP Server
+// /   UDP Server
 type IBaseUDPServerHandle interface {
 	IBaseUDPStreamHandle
 }
@@ -601,7 +598,7 @@ type BaseUDPServer struct {
 	BaseUDPStream
 }
 
-/// Unix Socket
+// / Unix Socket
 type IBaseUnixStreamHandle interface {
 	IBaseStreamHandle
 	OnRead(data []byte)
@@ -684,7 +681,7 @@ func (c *BaseUnixStream) Write(data []byte) error {
 }
 
 func (c *BaseUnixStream) WriteString(data string) {
-	if c.closed.Get() == SOCKET_CLOSED {
+	if c.closed.Get() == SOCKET_OPEN {
 		dataBytes := []byte(data)
 		c.Write(dataBytes)
 	}
@@ -806,7 +803,7 @@ func (c *BaseUnixStream) start(deadLine time.Duration) {
 	go c.writeLoop()
 }
 
-/// UnixSock Session
+// / UnixSock Session
 func (c *BaseUnixSession) Start() {
 	c.StartByDeadLine(DEFAULT_DEADLINE)
 }
@@ -818,9 +815,9 @@ func (c *BaseUnixSession) StartByDeadLine(deadLine time.Duration) {
 	}
 }
 
-/// UnixSock Client
-//阻塞得到结果
-//addr: "/tmp/fileserver.socket"
+// / UnixSock Client
+// 阻塞得到结果
+// addr: "/tmp/fileserver.socket"
 func (c *BaseUnixClient) ConnectByAddr(addr string) error {
 	return c.ConnectByAddrWithDeadLine(addr, DEFAULT_DEADLINE)
 }
@@ -856,7 +853,7 @@ func (c *BaseUnixClient) ConnectByAddrWithDeadLine(addr string, deadLine time.Du
 	return nil
 }
 
-////   UNIXSOCK STREAM SERVER
+// //   UNIXSOCK STREAM SERVER
 type IBaseUnixServerHandle interface {
 	IBaseStreamHandle
 	OnStart()
@@ -933,63 +930,5 @@ func (s *BaseUnixServer) Close() {
 		if s.IBaseUnixServerHandle != nil {
 			s.IBaseUnixServerHandle.OnClose()
 		}
-	}
-}
-
-func Vars(r *http.Request) map[string]string {
-	return mux.Vars(r)
-}
-
-type Router struct {
-	mux.Router
-}
-
-type BaseHttpServer struct {
-	http.Server
-	listener net.Listener
-}
-
-func (s *BaseHttpServer) checkRouter() {
-	if s.Handler == nil {
-		//s.Handler = http.NewServeMux()
-		s.Handler = mux.NewRouter()
-	}
-}
-
-func (s *BaseHttpServer) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) *mux.Route {
-	s.checkRouter()
-	return s.Handler.(*mux.Router).HandleFunc(pattern, handler)
-}
-
-func (s *BaseHttpServer) Router() *Router {
-	s.checkRouter()
-	return s.Handler.(*Router)
-}
-
-//addr: "ip:port"
-func (s *BaseHttpServer) Start(addr string) error {
-	if listener, err := s.listen(addr); err != nil {
-		return err
-	} else {
-		s.listener = listener
-		go s.Serve(listener)
-	}
-	return nil
-}
-
-func (s *BaseHttpServer) Stop() {
-	if s.listener != nil {
-		s.listener.Close()
-	}
-}
-
-func (s *BaseHttpServer) listen(addr string) (net.Listener, error) {
-	if addr == "" {
-		addr = ":http"
-	}
-	if ln, err := net.Listen("tcp", addr); err != nil {
-		return nil, err
-	} else {
-		return ln, nil
 	}
 }
